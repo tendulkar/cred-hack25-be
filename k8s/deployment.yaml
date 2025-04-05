@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-client
+  labels:
+    app: github-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-client
+  template:
+    metadata:
+      labels:
+        app: github-client
+    spec:
+      containers:
+      - name: github-client
+        image: 109869387501.dkr.ecr.ap-south-1.amazonaws.com/github-client:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: REPO_URL
+          value: "https://github.com/golang/example"
+        command: ["./github-client"]
+        args: ["-repo=$(REPO_URL)"]
+        ports:
+        - containerPort: 8080
+          name: http
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "ps aux | grep github-client | grep -v grep"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "ps aux | grep github-client | grep -v grep"
+          initialDelaySeconds: 5
+          periodSeconds: 10

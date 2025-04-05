@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"cred.com/hack25/backend/internal/service"
-	"cred.com/hack25/backend/pkg/llm/client"
+	"cred.com/hack25/backend/pkg/llm/interfaces"
 	"cred.com/hack25/backend/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -76,7 +76,7 @@ func (h *LLMHandler) StreamChat(c *gin.Context) {
 
 	// Create a channel to signal client disconnection
 	clientGone := c.Request.Context().Done()
-	
+
 	// Create a function to send SSE events
 	sendEvent := func(chunk string) error {
 		select {
@@ -128,8 +128,8 @@ func (h *LLMHandler) Embedding(c *gin.Context) {
 // Models returns a list of available models
 func (h *LLMHandler) Models(c *gin.Context) {
 	// Get the list of default models
-	models := client.DefaultModels()
-	
+	models := interfaces.DefaultModels()
+
 	// Format for response
 	var modelList []map[string]interface{}
 	for fullName, model := range models {
@@ -142,6 +142,6 @@ func (h *LLMHandler) Models(c *gin.Context) {
 			"top_p":       model.TopP,
 		})
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"models": modelList})
 }

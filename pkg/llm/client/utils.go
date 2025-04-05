@@ -1,38 +1,39 @@
 package client
 
 import (
-	"strings"
+	"cred.com/hack25/backend/pkg/llm/interfaces"
 )
 
-// ModelDetails holds the provider and name of a model
-type ModelDetails struct {
-	Provider string
-	Name     string
+// ModelDetails is an alias for interfaces.ModelInfo
+type ModelDetails = interfaces.ModelInfo
+
+// For backward compatibility, keep these functions but make them call the interfaces versions
+// These functions are deprecated and will be removed in a future version
+
+// GetModelDetails is a backward compatibility function that calls SplitModelName
+func GetModelDetails(modelName string) ModelDetails {
+	return interfaces.SplitModelName(modelName)
 }
 
-// IsValidModelWithProvider checks if a model string has a valid provider prefix
-func IsValidModelWithProvider(modelName string) bool {
-	return strings.Contains(modelName, ":")
-}
-
-// SplitModelName splits a model name with provider (e.g., "openai:gpt-4") into provider and name
-func SplitModelName(modelName string) ModelDetails {
-	if !IsValidModelWithProvider(modelName) {
-		// If no provider is specified, try to infer it
-		if strings.HasPrefix(modelName, "gpt-") {
-			return ModelDetails{Provider: "openai", Name: modelName}
-		} else if strings.HasPrefix(modelName, "gemini-") {
-			return ModelDetails{Provider: "google", Name: modelName}
-		} else if strings.HasPrefix(modelName, "sonnet-") {
-			return ModelDetails{Provider: "sonnet", Name: modelName}
-		}
-		// Default to returning as-is
-		return ModelDetails{Provider: "", Name: modelName}
+// InferProviderFromModel tries to infer the provider from a model name
+func InferProviderFromModel(modelName string) string {
+	if interfaces.IsValidModelWithProvider(modelName) {
+		return interfaces.SplitModelName(modelName).Provider
 	}
 
-	parts := strings.SplitN(modelName, ":", 2)
-	return ModelDetails{
-		Provider: parts[0],
-		Name:     parts[1],
+	// Try to infer provider from model name
+	if modelName == "" {
+		return ""
+	}
+
+	switch {
+	case len(modelName) >= 4 && modelName[:4] == "gpt-":
+		return "openai"
+	case len(modelName) >= 7 && modelName[:7] == "gemini-":
+		return "google"
+	case len(modelName) >= 7 && modelName[:7] == "sonnet-":
+		return "sonnet"
+	default:
+		return ""
 	}
 }

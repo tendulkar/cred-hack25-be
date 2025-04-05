@@ -12,18 +12,20 @@ import (
 // Client is the interface for interacting with GitHub repositories
 type Client interface {
 	// FetchRepository fetches the repository content from the given URL
-	FetchRepository(repoURL string) (*Repository, error)
+	FetchRepository(repoURL string, authToken string) (*Repository, error)
 }
 
 // HTTPClient is the implementation of the Client interface
 type HTTPClient struct {
 	httpClient *http.Client
+	authToken  string
 }
 
 // NewClient creates a new GitHub client
-func NewClient() Client {
+func NewClient(authToken string) Client {
 	return &HTTPClient{
 		httpClient: &http.Client{},
+		authToken:  authToken,
 	}
 }
 
@@ -46,7 +48,12 @@ type File struct {
 var repoURLPattern = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$`)
 
 // FetchRepository fetches the repository content from the given URL
-func (c *HTTPClient) FetchRepository(repoURL string) (*Repository, error) {
+func (c *HTTPClient) FetchRepository(repoURL string, authToken string) (*Repository, error) {
+	// Use provided auth token if available, otherwise use the client's token
+	token := c.authToken
+	if authToken != "" {
+		token = authToken
+	}
 	owner, name, err := parseRepoURL(repoURL)
 	if err != nil {
 		return nil, err
@@ -63,7 +70,7 @@ func (c *HTTPClient) FetchRepository(repoURL string) (*Repository, error) {
 	repo.FileTree[""] = []string{}
 
 	// Fetch repository contents recursively
-	err = c.fetchContents(repo, "", owner, name)
+	err = c.fetchContents(repo, "", owner, name, token)
 	if err != nil {
 		return nil, err
 	}
@@ -81,12 +88,17 @@ func parseRepoURL(repoURL string) (string, string, error) {
 }
 
 // fetchContents fetches the contents of a directory in the repository
-func (c *HTTPClient) fetchContents(repo *Repository, dirPath, owner, name string) error {
+func (c *HTTPClient) fetchContents(repo *Repository, dirPath, owner, name, authToken string) error {
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, name, dirPath)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return err
+	}
+
+	// Add authorization header if token is provided
+	if authToken != "" {
+		req.Header.Add("Authorization", "token "+authToken)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -138,12 +150,12 @@ func (c *HTTPClient) fetchContents(repo *Repository, dirPath, owner, name string
 			repo.FileTree[filePath] = []string{}
 
 			// Recursively fetch contents of subdirectory
-			if err := c.fetchContents(repo, filePath, owner, name); err != nil {
+			if err := c.fetchContents(repo, filePath, owner, name, authToken); err != nil {
 				return err
 			}
 		} else if item.Type == "file" {
 			// Fetch file content
-			if err := c.fetchFileContent(repo, filePath, item.DownloadURL); err != nil {
+			if err := c.fetchFileContent(repo, filePath, item.DownloadURL, authToken); err != nil {
 				return err
 			}
 		}
@@ -153,7 +165,7 @@ func (c *HTTPClient) fetchContents(repo *Repository, dirPath, owner, name string
 }
 
 // fetchFileContent fetches the content of a file
-func (c *HTTPClient) fetchFileContent(repo *Repository, filePath, downloadURL string) error {
+func (c *HTTPClient) fetchFileContent(repo *Repository, filePath, downloadURL, authToken string) error {
 	if downloadURL == "" {
 		// Some files (like binary files) don't have a download URL
 		repo.Files[filePath] = &File{
@@ -166,6 +178,11 @@ func (c *HTTPClient) fetchFileContent(repo *Repository, filePath, downloadURL st
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		return err
+	}
+
+	// Add authorization header if token is provided
+	if authToken != "" {
+		req.Header.Add("Authorization", "token "+authToken)
 	}
 
 	resp, err := c.httpClient.Do(req)

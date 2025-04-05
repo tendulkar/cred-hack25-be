@@ -9,10 +9,10 @@ import (
 
 func Example() {
 	// Create a new GitHub client
-	client := github.NewClient()
+	client := github.NewClient("")
 
 	// Fetch a repository
-	repo, err := client.FetchRepository("https://github.com/golang/go")
+	repo, err := client.FetchRepository("https://github.com/golang/go", "")
 	if err != nil {
 		log.Fatalf("Failed to fetch repository: %v", err)
 	}
@@ -61,10 +61,10 @@ func Example() {
 
 func ExampleRepository_GetFileContent() {
 	// Create a new GitHub client
-	client := github.NewClient()
+	client := github.NewClient("")
 
 	// Fetch a repository
-	repo, err := client.FetchRepository("https://github.com/golang/example")
+	repo, err := client.FetchRepository("https://github.com/golang/example", "")
 	if err != nil {
 		log.Fatalf("Failed to fetch repository: %v", err)
 	}
@@ -83,10 +83,10 @@ func ExampleRepository_GetFileContent() {
 
 func ExampleRepository_GetDirectoryTree() {
 	// Create a new GitHub client
-	client := github.NewClient()
+	client := github.NewClient("")
 
 	// Fetch a small repository
-	repo, err := client.FetchRepository("https://github.com/golang/example")
+	repo, err := client.FetchRepository("https://github.com/golang/example", "")
 	if err != nil {
 		log.Fatalf("Failed to fetch repository: %v", err)
 	}

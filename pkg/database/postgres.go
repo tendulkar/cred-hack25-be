@@ -41,7 +41,7 @@ func NewDB(config Config) (*DB, error) {
 
 	// Verify connection
 	if err := db.Ping(); err != nil {
-		logger.Errorf("Failed to ping database: %v", err)
+		logger.Errorf("Failed to ping database: %v, dsn: %s", err, dsn)
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 

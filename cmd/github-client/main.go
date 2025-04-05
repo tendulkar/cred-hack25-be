@@ -16,6 +16,7 @@ func main() {
 
 	// Parse command-line flags
 	repoURL := flag.String("repo", "", "GitHub repository URL (required)")
+	authToken := flag.String("token", "", "GitHub authentication token for private repositories")
 	listDir := flag.String("ls", "", "List files in directory")
 	getFile := flag.String("cat", "", "Get file content")
 	findPattern := flag.String("find", "", "Find files matching pattern")
@@ -31,11 +32,11 @@ func main() {
 	}
 
 	// Create GitHub client
-	client := github.NewClient()
+	client := github.NewClient(*authToken)
 
 	// Fetch repository
 	logger.Infof("Fetching repository: %s", *repoURL)
-	repo, err := client.FetchRepository(*repoURL)
+	repo, err := client.FetchRepository(*repoURL, *authToken)
 	if err != nil {
 		logger.Errorf("Failed to fetch repository: %v", err)
 		os.Exit(1)

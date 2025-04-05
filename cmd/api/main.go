@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +15,7 @@ import (
 	"cred.com/hack25/backend/internal/service"
 	"cred.com/hack25/backend/pkg/auth"
 	"cred.com/hack25/backend/pkg/database"
+	"cred.com/hack25/backend/pkg/llm/client"
 	"cred.com/hack25/backend/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +23,7 @@ import (
 func main() {
 	// Load configuration
 	cfg, err := config.Load()
+	logger.Infof("Configuration loaded: %+v", cfg)
 	if err != nil {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
@@ -55,11 +56,29 @@ func main() {
 		cfg.JWT.SigningAlgorithm,
 	)
 
+	// Initialize LLM client factory
+	llmClientFactory, err := client.NewFactory(client.Config{
+		OpenAIAPIKey:   cfg.LLM.OpenAI.APIKey,
+		GeminiAPIKey:   cfg.LLM.Gemini.APIKey,
+		SonnetAPIKey:   cfg.LLM.Sonnet.APIKey,
+		SonnetBaseURL:  cfg.LLM.Sonnet.BaseURL,
+		LiteLLMAPIKey:  cfg.LLM.LiteLLM.APIKey,
+		LiteLLMBaseURL: cfg.LLM.LiteLLM.BaseURL,
+	})
+	if err != nil {
+		logger.Fatalf("Failed to initialize LLM client factory: %v", err)
+	}
+	defer llmClientFactory.Close()
+
 	// Initialize services
 	userService := service.NewUserService(userRepo, jwtService)
+	llmService := service.NewLLMService(llmClientFactory, cfg.LLM.DefaultModelName)
+	codeAnalysisService := service.NewCodeAnalysisService(llmService)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService)
+	llmHandler := handlers.NewLLMHandler(llmService)
+	codeAnalysisHandler := handlers.NewCodeAnalysisHandler(codeAnalysisService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtService)
@@ -100,6 +119,21 @@ func main() {
 		admin.Use(authMiddleware.RequireAuth(), authMiddleware.RequireRole("admin"))
 		{
 			admin.GET("/users", userHandler.ListUsers)
+		}
+
+		// LLM routes
+		llm := api.Group("/llm")
+		{
+			llm.POST("/chat", llmHandler.Chat)
+			llm.POST("/stream", llmHandler.StreamChat)
+			llm.POST("/embedding", llmHandler.Embedding)
+			llm.GET("/models", llmHandler.Models)
+		}
+
+		// Code analysis routes
+		code := api.Group("/code")
+		{
+			code.POST("/analyze", codeAnalysisHandler.AnalyzeRepository)
 		}
 	}
 

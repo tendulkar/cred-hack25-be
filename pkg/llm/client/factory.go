@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	
+
 	"cred.com/hack25/backend/pkg/llm/gemini"
+	"cred.com/hack25/backend/pkg/llm/interfaces"
+	"cred.com/hack25/backend/pkg/llm/litellm"
 	"cred.com/hack25/backend/pkg/llm/openai"
 	"cred.com/hack25/backend/pkg/llm/sonnet"
 	"cred.com/hack25/backend/pkg/logger"
@@ -13,9 +15,10 @@ import (
 
 // Factory creates and manages LLM clients
 type Factory struct {
-	openaiClient *openai.Client
-	geminiClient *gemini.Client
-	sonnetClient *sonnet.Client
+	openaiClient  *openai.Client
+	geminiClient  *gemini.Client
+	sonnetClient  *sonnet.Client
+	litellmClient *litellm.Client
 	// Other clients can be added here
 }
 
@@ -46,11 +49,17 @@ func NewFactory(config Config) (*Factory, error) {
 		logger.Info("Sonnet client initialized")
 	}
 
+	// Initialize LiteLLM client if configured
+	if config.LiteLLMAPIKey != "" || config.LiteLLMBaseURL != "" {
+		factory.litellmClient = litellm.NewClient(config.LiteLLMAPIKey, config.LiteLLMBaseURL)
+		logger.Info("LiteLLM client initialized")
+	}
+
 	return factory, nil
 }
 
 // GetClient returns the appropriate LLM client for the given model
-func (f *Factory) GetClient(modelName string) (LLMClient, error) {
+func (f *Factory) GetClient(modelName string) (interfaces.LLMClient, error) {
 	// Determine provider from model name
 	provider := ""
 	if strings.Contains(modelName, ":") {
@@ -94,6 +103,12 @@ func (f *Factory) GetClient(modelName string) (LLMClient, error) {
 			return nil, fmt.Errorf("invalid Sonnet model: %s", modelName)
 		}
 		return f.sonnetClient, nil
+	case "litellm":
+		if f.litellmClient == nil {
+			return nil, errors.New("litellm client not initialized")
+		}
+		// LiteLLM proxy supports many models, so we don't validate the model name
+		return f.litellmClient, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider for model: %s", modelName)
 	}
@@ -109,8 +124,10 @@ func (f *Factory) Close() {
 
 // Config holds configuration for all LLM clients
 type Config struct {
-	OpenAIAPIKey  string
-	GeminiAPIKey  string
-	SonnetAPIKey  string
-	SonnetBaseURL string
+	OpenAIAPIKey   string
+	GeminiAPIKey   string
+	SonnetAPIKey   string
+	SonnetBaseURL  string
+	LiteLLMAPIKey  string
+	LiteLLMBaseURL string
 }

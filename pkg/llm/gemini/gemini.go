@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"cred.com/hack25/backend/pkg/llm/client"
+	"cred.com/hack25/backend/pkg/llm/interfaces"
 	"cred.com/hack25/backend/pkg/logger"
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
@@ -33,7 +33,7 @@ func NewClient(apiKey string) (*Client, error) {
 }
 
 // Completion implements the Completion method of the LLMClient interface
-func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (*client.CompletionResponse, error) {
+func (c *Client) Completion(ctx context.Context, req interfaces.CompletionRequest) (*interfaces.CompletionResponse, error) {
 	// Create a new Gemini model instance
 	model := c.genaiClient.GenerativeModel(req.Model.Name)
 
@@ -57,8 +57,8 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 	model.SetTopP(float32(topP))
 	model.SetMaxOutputTokens(int32(maxTokens))
 
-	// Convert client messages to Gemini content
-	var contents []*genai.Content
+	// Convert client messages to Gemini content parts
+	var parts []genai.Part
 	for _, msg := range req.Messages {
 		role := msg.Role
 		// Map OpenAI roles to Gemini roles
@@ -70,15 +70,19 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 			role = "model"
 		}
 
-		content := &genai.Content{
-			Role:  role,
-			Parts: []genai.Part{genai.Text(msg.Content)},
+		// Add role prefix to content for Gemini
+		content := msg.Content
+		if role == "user" {
+			content = "User: " + content
+		} else if role == "model" {
+			content = "Assistant: " + content
 		}
-		contents = append(contents, content)
+
+		parts = append(parts, genai.Text(content))
 	}
 
 	// Generate completion
-	resp, err := model.GenerateContent(ctx, contents...)
+	resp, err := model.GenerateContent(ctx, parts...)
 	if err != nil {
 		logger.Errorf("Gemini completion error: %v", err)
 		return nil, err
@@ -105,10 +109,10 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 	}
 	estimatedCompletionTokens := len(strings.Split(text, " ")) // Very rough estimate
 
-	return &client.CompletionResponse{
+	return &interfaces.CompletionResponse{
 		Text:         text,
 		FinishReason: string(resp.Candidates[0].FinishReason),
-		TokenUsage: &client.TokenUsage{
+		TokenUsage: &interfaces.TokenUsage{
 			PromptTokens:     estimatedPromptTokens,
 			CompletionTokens: estimatedCompletionTokens,
 			TotalTokens:      estimatedPromptTokens + estimatedCompletionTokens,
@@ -118,7 +122,7 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 }
 
 // StreamCompletion implements the StreamCompletion method of the LLMClient interface
-func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequest, callback func(chunk string) error) error {
+func (c *Client) StreamCompletion(ctx context.Context, req interfaces.CompletionRequest, callback func(chunk string) error) error {
 	// Create a new Gemini model instance
 	model := c.genaiClient.GenerativeModel(req.Model.Name)
 
@@ -142,8 +146,8 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 	model.SetTopP(float32(topP))
 	model.SetMaxOutputTokens(int32(maxTokens))
 
-	// Convert client messages to Gemini content
-	var contents []*genai.Content
+	// Convert client messages to Gemini content parts
+	var parts []genai.Part
 	for _, msg := range req.Messages {
 		role := msg.Role
 		// Map OpenAI roles to Gemini roles
@@ -155,16 +159,20 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 			role = "model"
 		}
 
-		content := &genai.Content{
-			Role:  role,
-			Parts: []genai.Part{genai.Text(msg.Content)},
+		// Add role prefix to content for Gemini
+		content := msg.Content
+		if role == "user" {
+			content = "User: " + content
+		} else if role == "model" {
+			content = "Assistant: " + content
 		}
-		contents = append(contents, content)
+
+		parts = append(parts, genai.Text(content))
 	}
 
 	// Generate streaming completion
-	iter := model.GenerateContentStream(ctx, contents...)
-	
+	iter := model.GenerateContentStream(ctx, parts...)
+
 	for {
 		resp, err := iter.Next()
 		if err != nil {
@@ -196,7 +204,7 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 }
 
 // Embedding implements the Embedding method of the LLMClient interface
-func (c *Client) Embedding(ctx context.Context, text string, modelName string) (*client.EmbeddingResponse, error) {
+func (c *Client) Embedding(ctx context.Context, text string, modelName string) (*interfaces.EmbeddingResponse, error) {
 	// Gemini doesn't natively support embeddings in the same way as OpenAI
 	// This is a placeholder implementation
 	return nil, errors.New("embeddings not supported by Gemini client")

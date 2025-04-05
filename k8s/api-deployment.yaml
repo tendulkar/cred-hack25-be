@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-analyser-be
+  labels:
+    app: code-analyser-be
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: code-analyser-be
+  template:
+    metadata:
+      labels:
+        app: code-analyser-be
+    spec:
+      containers:
+      - name: code-analyser-be
+        image: 109869387501.dkr.ecr.ap-south-1.amazonaws.com/code-analyser-be:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        env:
+        - name: APP_ENV
+          value: "production"
+        - name: SERVER_PORT
+          value: "6060"
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-db-credentials
+              key: host
+        - name: DB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-db-credentials
+              key: port
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-db-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-db-credentials
+              key: password
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-db-credentials
+              key: dbname
+        - name: DB_SSL_MODE
+          value: "require"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-api-secrets
+              key: jwt-secret
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-api-secrets
+              key: openai-api-key
+              optional: true
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-api-secrets
+              key: gemini-api-key
+              optional: true
+        - name: SONNET_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-analyser-api-secrets
+              key: sonnet-api-key
+              optional: true
+        ports:
+        - containerPort: 6060
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 6060
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 6060
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: code-analyser-db-credentials
+type: Opaque
+stringData:
+  host: "postgres-service"  # Change to your actual DB host
+  port: "5432"
+  username: "hack25_user"
+  password: "hack25_password"
+  dbname: "code_analyser"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: code-analyser-api-secrets
+type: Opaque
+stringData:
+  jwt-secret: "your-secret-key-change-in-production"
+  openai-api-key: ""  # Add your OpenAI API key here
+  gemini-api-key: ""  # Add your Gemini API key here
+  sonnet-api-key: ""  # Add your Sonnet API key here

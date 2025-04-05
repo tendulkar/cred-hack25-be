@@ -1,0 +1,42 @@
+FROM golang:1.23-alpine AS builder
+
+# Add build dependencies and set environment variables for better performance
+RUN apk add --no-cache git \
+    && go env -w CGO_ENABLED=0 \
+    && go env -w GOOS=linux \
+    && go env -w GOARCH=amd64
+
+WORKDIR /app
+
+# Copy go.mod and go.sum files first for better layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies with parallel jobs
+RUN go mod download -x
+
+# Copy the source code
+COPY . .
+
+# Build with performance optimizations
+RUN go build -o api-server ./cmd/api/main.go
+
+# Use a minimal alpine image for the final stage
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+# Copy the binary from the builder stage
+COPY --from=builder /app/api-server .
+
+RUN ls -Altrh /
+RUN ls -Altrh /root
+# Environment variables will be provided by Kubernetes
+
+# Expose the API port
+EXPOSE 6060
+
+# Set the entrypoint
+ENTRYPOINT ["./api-server"]

@@ -3,9 +3,10 @@ package openai
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 
-	"cred.com/hack25/backend/pkg/llm/client"
+	"cred.com/hack25/backend/pkg/llm/interfaces"
 	"cred.com/hack25/backend/pkg/logger"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -23,7 +24,7 @@ func NewClient(apiKey string) *Client {
 }
 
 // Completion implements the Completion method of the LLMClient interface
-func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (*client.CompletionResponse, error) {
+func (c *Client) Completion(ctx context.Context, req interfaces.CompletionRequest) (*interfaces.CompletionResponse, error) {
 	// Convert client messages to OpenAI messages
 	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -72,10 +73,10 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 	}
 
 	// Return the response
-	return &client.CompletionResponse{
+	return &interfaces.CompletionResponse{
 		Text:         resp.Choices[0].Message.Content,
-		FinishReason: resp.Choices[0].FinishReason,
-		TokenUsage: &client.TokenUsage{
+		FinishReason: string(resp.Choices[0].FinishReason),
+		TokenUsage: &interfaces.TokenUsage{
 			PromptTokens:     resp.Usage.PromptTokens,
 			CompletionTokens: resp.Usage.CompletionTokens,
 			TotalTokens:      resp.Usage.TotalTokens,
@@ -85,7 +86,7 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 }
 
 // StreamCompletion implements the StreamCompletion method of the LLMClient interface
-func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequest, callback func(chunk string) error) error {
+func (c *Client) StreamCompletion(ctx context.Context, req interfaces.CompletionRequest, callback func(chunk string) error) error {
 	// Convert client messages to OpenAI messages
 	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -130,7 +131,7 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 
 	for {
 		response, err := stream.Recv()
-		if errors.Is(err, openai.ErrStreamClosed) {
+		if errors.Is(err, io.EOF) {
 			logger.Info("OpenAI stream closed")
 			break
 		}
@@ -154,15 +155,15 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 }
 
 // Embedding implements the Embedding method of the LLMClient interface
-func (c *Client) Embedding(ctx context.Context, text string, modelName string) (*client.EmbeddingResponse, error) {
+func (c *Client) Embedding(ctx context.Context, text string, modelName string) (*interfaces.EmbeddingResponse, error) {
 	if modelName == "" {
-		modelName = openai.AdaEmbeddingV2
+		modelName = string(openai.AdaEmbeddingV2)
 	}
 
 	// Create the embedding request
 	req := openai.EmbeddingRequest{
 		Input: []string{text},
-		Model: modelName,
+		Model: openai.EmbeddingModel(modelName),
 	}
 
 	// Get the embedding from OpenAI
@@ -185,9 +186,9 @@ func (c *Client) Embedding(ctx context.Context, text string, modelName string) (
 	}
 
 	// Return the response
-	return &client.EmbeddingResponse{
+	return &interfaces.EmbeddingResponse{
 		Embedding: embedding,
-		TokenUsage: &client.TokenUsage{
+		TokenUsage: &interfaces.TokenUsage{
 			PromptTokens:     resp.Usage.PromptTokens,
 			CompletionTokens: 0,
 			TotalTokens:      resp.Usage.TotalTokens,

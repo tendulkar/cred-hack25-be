@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	"cred.com/hack25/backend/pkg/llm/client"
+	"cred.com/hack25/backend/pkg/llm/interfaces"
 	"cred.com/hack25/backend/pkg/logger"
 )
 
@@ -24,12 +24,12 @@ type Client struct {
 
 // SonnetCompletionRequest represents a request to the Sonnet API
 type SonnetCompletionRequest struct {
-	Model       string             `json:"model"`
-	Messages    []SonnetMessage    `json:"messages"`
-	MaxTokens   int                `json:"max_tokens,omitempty"`
-	Temperature float32            `json:"temperature,omitempty"`
-	TopP        float32            `json:"top_p,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []SonnetMessage `json:"messages"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Temperature float32         `json:"temperature,omitempty"`
+	TopP        float32         `json:"top_p,omitempty"`
+	Stream      bool            `json:"stream,omitempty"`
 }
 
 // SonnetMessage represents a message in the Sonnet API
@@ -50,9 +50,9 @@ type SonnetCompletionResponse struct {
 
 // SonnetChoice represents a choice in the Sonnet API response
 type SonnetChoice struct {
-	Index        int            `json:"index"`
-	Message      SonnetMessage  `json:"message"`
-	FinishReason string         `json:"finish_reason"`
+	Index        int           `json:"index"`
+	Message      SonnetMessage `json:"message"`
+	FinishReason string        `json:"finish_reason"`
 }
 
 // SonnetUsage represents token usage in the Sonnet API response
@@ -64,18 +64,18 @@ type SonnetUsage struct {
 
 // SonnetStreamResponse represents a streaming response chunk from Sonnet
 type SonnetStreamResponse struct {
-	ID      string            `json:"id"`
-	Object  string            `json:"object"`
-	Created int64             `json:"created"`
-	Model   string            `json:"model"`
+	ID      string               `json:"id"`
+	Object  string               `json:"object"`
+	Created int64                `json:"created"`
+	Model   string               `json:"model"`
 	Choices []SonnetStreamChoice `json:"choices"`
 }
 
 // SonnetStreamChoice represents a choice in a streaming response
 type SonnetStreamChoice struct {
-	Index        int                 `json:"index"`
-	Delta        SonnetStreamDelta   `json:"delta"`
-	FinishReason *string             `json:"finish_reason"`
+	Index        int               `json:"index"`
+	Delta        SonnetStreamDelta `json:"delta"`
+	FinishReason *string           `json:"finish_reason"`
 }
 
 // SonnetStreamDelta represents delta content in a streaming response
@@ -98,7 +98,7 @@ func NewClient(apiKey, baseURL string) *Client {
 }
 
 // Completion implements the Completion method of the LLMClient interface
-func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (*client.CompletionResponse, error) {
+func (c *Client) Completion(ctx context.Context, req interfaces.CompletionRequest) (*interfaces.CompletionResponse, error) {
 	// Convert client messages to Sonnet messages
 	messages := make([]SonnetMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -181,10 +181,10 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 	}
 
 	// Return the response
-	return &client.CompletionResponse{
+	return &interfaces.CompletionResponse{
 		Text:         sonnetResp.Choices[0].Message.Content,
 		FinishReason: sonnetResp.Choices[0].FinishReason,
-		TokenUsage: &client.TokenUsage{
+		TokenUsage: &interfaces.TokenUsage{
 			PromptTokens:     sonnetResp.Usage.PromptTokens,
 			CompletionTokens: sonnetResp.Usage.CompletionTokens,
 			TotalTokens:      sonnetResp.Usage.TotalTokens,
@@ -194,7 +194,7 @@ func (c *Client) Completion(ctx context.Context, req client.CompletionRequest) (
 }
 
 // StreamCompletion implements the StreamCompletion method of the LLMClient interface
-func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequest, callback func(chunk string) error) error {
+func (c *Client) StreamCompletion(ctx context.Context, req interfaces.CompletionRequest, callback func(chunk string) error) error {
 	// Convert client messages to Sonnet messages
 	messages := make([]SonnetMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -289,7 +289,7 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 
 		// Extract JSON data
 		data := line[6:] // Skip "data: "
-		
+
 		// Check for stream end
 		if string(data) == "[DONE]" {
 			break
@@ -317,7 +317,7 @@ func (c *Client) StreamCompletion(ctx context.Context, req client.CompletionRequ
 }
 
 // Embedding implements the Embedding method of the LLMClient interface
-func (c *Client) Embedding(ctx context.Context, text string, modelName string) (*client.EmbeddingResponse, error) {
+func (c *Client) Embedding(ctx context.Context, text string, modelName string) (*interfaces.EmbeddingResponse, error) {
 	if modelName == "" {
 		modelName = "sonnet-embedding-001"
 	}
@@ -382,9 +382,9 @@ func (c *Client) Embedding(ctx context.Context, text string, modelName string) (
 		return nil, err
 	}
 
-	return &client.EmbeddingResponse{
+	return &interfaces.EmbeddingResponse{
 		Embedding: embResp.Embedding,
-		TokenUsage: &client.TokenUsage{
+		TokenUsage: &interfaces.TokenUsage{
 			PromptTokens:     embResp.Usage.PromptTokens,
 			CompletionTokens: 0,
 			TotalTokens:      embResp.Usage.TotalTokens,
