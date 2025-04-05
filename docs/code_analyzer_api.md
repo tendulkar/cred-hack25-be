@@ -64,7 +64,7 @@ Indexes a GitHub repository, analyzing all Go files and storing the analysis in 
 
 ### Get Repository Index
 
-Retrieves analysis information for a repository, either for the entire repository or for a specific file.
+Retrieves analysis information for a repository, either for the entire repository or for a specific file. Includes call graph information.
 
 **URL**: `/repositories`
 **Method**: `GET`
@@ -74,6 +74,7 @@ Retrieves analysis information for a repository, either for the entire repositor
 
 - `url` (required): GitHub repository URL.
 - `file_path` (optional): Relative path to a specific file within the repository.
+- `include_call_graph` (optional): Set to "true" to include detailed call graph information. Default is "false".
 
 #### Success Response
 
@@ -105,7 +106,31 @@ Retrieves analysis information for a repository, either for the entire repositor
       "created_at": "2025-05-01T11:30:00Z",
       "updated_at": "2025-05-01T12:00:00Z"
     }
-  ]
+  ],
+  "call_graph": {
+    "nodes": [
+      {
+        "id": "main.main",
+        "package": "main",
+        "function": "main",
+        "file_path": "main.go"
+      },
+      {
+        "id": "fmt.Println",
+        "package": "fmt",
+        "function": "Println",
+        "is_external": true
+      }
+    ],
+    "edges": [
+      {
+        "source": "main.main",
+        "target": "fmt.Println",
+        "line": 12,
+        "count": 1
+      }
+    ]
+  }
 }
 ```
 
@@ -363,6 +388,70 @@ Analyzes a single Go file without storing the results in the database.
   "context": "fmt.Println(VERSION)",
   "created_at": "2025-05-01T11:30:00Z",
   "updated_at": "2025-05-01T12:00:00Z"
+}
+```
+
+### Call Graph Models
+
+#### CallGraphNode
+
+```json
+{
+  "id": "main.main",
+  "package": "main",
+  "function": "main", 
+  "receiver": "",
+  "file_path": "main.go",
+  "line": 10,
+  "is_external": false
+}
+```
+
+The `id` field is a unique identifier for the function, typically in the format `package.function` or `package.receiver.function` for methods.
+
+#### CallGraphEdge
+
+```json
+{
+  "source": "main.main",
+  "target": "fmt.Println",
+  "line": 12,
+  "parameters": "[\"Hello, World!\"]",
+  "count": 1
+}
+```
+
+The edge represents a function call, where `source` is the caller function ID and `target` is the callee function ID.
+
+#### CompleteCallGraph
+
+```json
+{
+  "nodes": [
+    {
+      "id": "main.main",
+      "package": "main",
+      "function": "main",
+      "file_path": "main.go",
+      "line": 10,
+      "is_external": false
+    },
+    {
+      "id": "fmt.Println",
+      "package": "fmt",
+      "function": "Println",
+      "is_external": true
+    }
+  ],
+  "edges": [
+    {
+      "source": "main.main",
+      "target": "fmt.Println",
+      "line": 12,
+      "parameters": "[\"Hello, World!\"]",
+      "count": 1
+    }
+  ]
 }
 ```
 

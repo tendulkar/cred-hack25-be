@@ -11,6 +11,7 @@ $$;
 CREATE DATABASE code_analyser WITH OWNER = code_analyser_user;
 
 -- Grant privileges to the user
+GRANT CONNECT ON DATABASE code_analyser TO code_analyser_user;
 GRANT ALL PRIVILEGES ON DATABASE code_analyser TO code_analyser_user;
 
 -- Connect to the database

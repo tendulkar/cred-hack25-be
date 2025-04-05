@@ -102,10 +102,10 @@ metadata:
   name: code-analyser-db-credentials
 type: Opaque
 stringData:
-  host: "postgres-service"  # Change to your actual DB host
+  host: "database-2-instance-1.c3qm2ay88vjj.ap-south-1.rds.amazonaws.com"  # Change to your actual DB host
   port: "5432"
-  username: "hack25_user"
-  password: "hack25_password"
+  username: "code_analyser_user"
+  password: "code_analyser_password"
   dbname: "code_analyser"
 ---
 apiVersion: v1

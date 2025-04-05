@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"cred.com/hack25/backend/pkg/goanalyzer/models"
@@ -34,23 +35,24 @@ type RepositoryFile struct {
 
 // RepositoryFunction represents an analyzed function in a file
 type RepositoryFunction struct {
-	ID            int64     `json:"id" db:"id"`
-	RepositoryID  int64     `json:"repository_id" db:"repository_id"`
-	FileID        int64     `json:"file_id" db:"file_id"`
-	Name          string    `json:"name" db:"name"`                     // Function name
-	Kind          string    `json:"kind" db:"kind"`                     // "function" or "method"
-	Receiver      string    `json:"receiver" db:"receiver"`             // For methods
-	Exported      bool      `json:"exported" db:"exported"`             // If it's exported
-	Parameters    string    `json:"parameters" db:"parameters"`         // JSON array of parameters
-	Results       string    `json:"results" db:"results"`               // JSON array of results
-	CodeBlock     string    `json:"code_block" db:"code_block"`         // Full code
-	Line          int       `json:"line" db:"line"`                     // Starting line
-	Calls         string    `json:"calls" db:"calls"`                   // JSON array of function calls
-	CalledBy      string    `json:"called_by" db:"called_by"`           // JSON array of functions calling this
-	References    string    `json:"references" db:"references"`         // JSON array of references
-	StatementInfo string    `json:"statement_info" db:"statement_info"` // JSON of parsed statement info
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	ID            int64               `json:"id" db:"id"`
+	RepositoryID  int64               `json:"repository_id" db:"repository_id"`
+	FileID        int64               `json:"file_id" db:"file_id"`
+	Name          string              `json:"name" db:"name"`                     // Function name
+	Kind          string              `json:"kind" db:"kind"`                     // "function" or "method"
+	Receiver      string              `json:"receiver" db:"receiver"`             // For methods
+	Exported      bool                `json:"exported" db:"exported"`             // If it's exported
+	Parameters    string              `json:"parameters" db:"parameters"`         // JSON array of parameters
+	Results       string              `json:"results" db:"results"`               // JSON array of results
+	CodeBlock     string              `json:"code_block" db:"code_block"`         // Full code
+	Line          int                 `json:"line" db:"line"`                     // Starting line
+	Calls         string              `json:"calls" db:"calls"`                   // JSON array of function calls
+	CalledBy      string              `json:"called_by" db:"called_by"`           // JSON array of functions calling this
+	References    string              `json:"references" db:"references"`         // JSON array of references
+	StatementInfo string              `json:"statement_info" db:"statement_info"` // JSON of parsed statement info
+	CreatedAt     time.Time           `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time           `json:"updated_at" db:"updated_at"`
+	Statements    []FunctionStatement `json:"-" db:"-"`
 }
 
 // RepositorySymbol represents other symbols in the repository (vars, consts, types)
@@ -99,9 +101,10 @@ type GetIndexResponse struct {
 }
 
 // FileAnalysisToRepositoryModels converts a FileAnalysis to repository models
-func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64, fileID int64) ([]RepositoryFunction, []RepositorySymbol) {
+func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64, fileID int64) ([]RepositoryFunction, []RepositorySymbol, []FunctionStatement) {
 	var functions []RepositoryFunction
 	var symbols []RepositorySymbol
+	var statements []FunctionStatement
 
 	// Convert functions
 	for _, fn := range analysis.Functions {
@@ -117,7 +120,23 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 		}
+
+		repoFn.Statements = convertStatements(fn.StatementAnalysis, nil)
 		functions = append(functions, repoFn)
+
+		// We'll need to associate statements with this function later
+		// Store the index of this function for reference when we have its ID
+		fnIndex := len(functions) - 1
+
+		// Convert statement analysis to function statements
+		convertedStatements := convertStatements(fn.StatementAnalysis, nil)
+		if len(convertedStatements) > 0 {
+			// Store the function index so we can update with the real function ID later
+			for i := range convertedStatements {
+				convertedStatements[i].FunctionIndex = fnIndex
+			}
+			statements = append(statements, convertedStatements...)
+		}
 	}
 
 	// Convert constants
@@ -200,5 +219,54 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 		symbols = append(symbols, symbol)
 	}
 
-	return functions, symbols
+	return functions, symbols, statements
+}
+
+// convertStatements recursively converts StatementInfo to FunctionStatement models
+func convertStatements(stmtInfos []models.StatementInfo, parentID *int64) []FunctionStatement {
+	var statements []FunctionStatement
+
+	for _, stmt := range stmtInfos {
+		// Encode JSON fields
+		conditionsJSON, _ := json.Marshal(stmt.Conditions)
+		variablesJSON, _ := json.Marshal(stmt.Variables)
+		callsJSON, _ := json.Marshal(stmt.Calls)
+
+		// Create statement
+		repoStmt := FunctionStatement{
+			// FunctionID will be set later when we have actual function IDs
+			StatementType:     stmt.Type,
+			Text:              stmt.Text,
+			Line:              stmt.Position.Line,
+			Conditions:        string(conditionsJSON),
+			Variables:         string(variablesJSON),
+			Calls:             string(callsJSON),
+			ParentStatementID: parentID,
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now(),
+			// Temporary field to track parentage before DB insertion
+			FunctionIndex: -1, // Will be set by the caller
+		}
+
+		statements = append(statements, repoStmt)
+
+		// Set this statement as the parent for its sub-statements
+		stmtIndex := len(statements) - 1
+
+		// Process nested statements
+		if len(stmt.SubStatements) > 0 {
+			// Use a placeholder ID that will be replaced after DB insertion
+			placeholderID := int64(-(stmtIndex + 1)) // Negative to ensure it doesn't conflict with real IDs
+			childStmts := convertStatements(stmt.SubStatements, &placeholderID)
+
+			// Associate with the same function
+			for i := range childStmts {
+				childStmts[i].ParentIndex = stmtIndex
+			}
+
+			statements = append(statements, childStmts...)
+		}
+	}
+
+	return statements
 }

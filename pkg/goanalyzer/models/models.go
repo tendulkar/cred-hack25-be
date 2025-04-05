@@ -4,22 +4,23 @@ import "go/ast"
 
 // Symbol represents a Go symbol such as a variable, function, or type
 type Symbol struct {
-	Name         string     `json:"name"`
-	Kind         string     `json:"kind"`
-	Type         string     `json:"type,omitempty"`
-	Value        string     `json:"value,omitempty"`
-	Exported     bool       `json:"exported"`
-	Position     Position   `json:"position"`
-	Parameters   []Symbol   `json:"parameters,omitempty"`
-	Results      []Symbol   `json:"results,omitempty"`
-	Fields       []Symbol   `json:"fields,omitempty"`
-	Methods      []string   `json:"methods,omitempty"`
-	Receiver     string     `json:"receiver,omitempty"`
-	CodeBlock    string     `json:"code_block,omitempty"`
-	ASTNode      ast.Node   `json:"-"` // The AST node for this symbol
-	Statements   []ast.Stmt `json:"-"` // List of statements for functions/methods
-	Declarations []ast.Decl `json:"-"` // List of declarations
-	Expression   ast.Expr   `json:"-"` // For expressions
+	Name             string          `json:"name"`
+	Kind             string          `json:"kind"`
+	Type             string          `json:"type,omitempty"`
+	Value            string          `json:"value,omitempty"`
+	Exported         bool            `json:"exported"`
+	Position         Position        `json:"position"`
+	Parameters       []Symbol        `json:"parameters,omitempty"`
+	Results          []Symbol        `json:"results,omitempty"`
+	Fields           []Symbol        `json:"fields,omitempty"`
+	Methods          []string        `json:"methods,omitempty"`
+	Receiver         string          `json:"receiver,omitempty"`
+	CodeBlock        string          `json:"code_block,omitempty"`
+	ASTNode          ast.Node        `json:"-"`                   // The AST node for this symbol
+	Statements       []ast.Stmt      `json:"-"`                   // List of statements for functions/methods
+	Declarations     []ast.Decl      `json:"-"`                   // List of declarations
+	Expression       ast.Expr        `json:"-"`                   // For expressions
+	StatementAnalysis []StatementInfo `json:"statement_analysis,omitempty"` // Detailed analysis of statements
 }
 
 // StatementInfo represents an analyzed statement with meaning

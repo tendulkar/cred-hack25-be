@@ -32,17 +32,22 @@ type FunctionReference struct {
 
 // FunctionStatement represents a statement within a function
 type FunctionStatement struct {
-	ID                int64     `json:"id" db:"id"`
-	FunctionID        int64     `json:"function_id" db:"function_id"`
-	StatementType     string    `json:"statement_type" db:"statement_type"` // "if", "for", "switch", etc.
-	Text              string    `json:"text" db:"text"`
-	Line              int       `json:"line" db:"line"`
-	Conditions        string    `json:"conditions" db:"conditions"` // JSON string
-	Variables         string    `json:"variables" db:"variables"`   // JSON string
-	Calls             string    `json:"calls" db:"calls"`           // JSON string
-	ParentStatementID *int64    `json:"parent_statement_id,omitempty" db:"parent_statement_id"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	ID                int64                `json:"id" db:"id"`
+	FunctionID        int64                `json:"function_id" db:"function_id"`
+	StatementType     string               `json:"statement_type" db:"statement_type"` // "if", "for", "switch", etc.
+	Text              string               `json:"text" db:"text"`
+	Line              int                  `json:"line" db:"line"`
+	Conditions        string               `json:"conditions" db:"conditions"` // JSON string
+	Variables         string               `json:"variables" db:"variables"`   // JSON string
+	Calls             string               `json:"calls" db:"calls"`           // JSON string
+	ParentStatementID *int64               `json:"parent_statement_id,omitempty" db:"parent_statement_id"`
+	CreatedAt         time.Time            `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time            `json:"updated_at" db:"updated_at"`
+	Children          []FunctionStatement `json:"children,omitempty" db:"-"` // Nested statements, not stored in DB
+	
+	// Temporary fields used during conversion, not stored in DB
+	FunctionIndex    int  `json:"-" db:"-"`  // Index in the functions slice for lookup
+	ParentIndex      int  `json:"-" db:"-"`  // Index in the statements slice for parent lookup
 }
 
 // SymbolReference represents a reference to a symbol in the code

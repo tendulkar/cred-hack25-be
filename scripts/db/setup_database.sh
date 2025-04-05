@@ -16,16 +16,19 @@ fi
 
 # Run the SQL scripts as the postgres user
 echo "Creating database and user..."
-psql -d postgres -f "$DIR/01_create_database.sql"
+psql postgres -f "$DIR/01_create_database.sql"
 
 echo "Creating users table..."
-psql -d postgres -f "$DIR/02_create_users_table.sql"
+psql postgres -f "$DIR/02_create_users_table.sql"
 
 echo "Creating code analysis tables..."
-psql -d postgres -f "$DIR/03_create_code_analysis_tables.sql"
+psql postgres -f "$DIR/03_create_code_analysis_tables.sql"
 
 echo "Seeding initial data..."
-psql -d postgres -f "$DIR/04_seed_data.sql"
+psql postgres -f "$DIR/04_seed_data.sql"
+
+echo "Adding code analyzer (new) schema..."
+psql postgres -f "$DIR/05_create_code_analyzer_tables.sql"
 
 echo "Database setup complete!"
 

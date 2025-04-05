@@ -64,12 +64,12 @@ echo -e "${GREEN}AWS credentials are valid.${NC}"
 CURRENT_CONTEXT=$(kubectl config current-context)
 echo -e "\n${YELLOW}Current Kubernetes context: ${GREEN}${CURRENT_CONTEXT}${NC}"
 echo "This script will build and deploy the code-analyser-be application to this context."
-read -p "Continue with this context? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Build and deployment aborted."
-    exit 1
-fi
+# read -p "Continue with this context? (y/n) " -n 1 -r
+# echo
+# if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#     echo "Build and deployment aborted."
+#     exit 1
+# fi
 
 # STEP 1: Build the binary locally
 echo -e "\n${YELLOW}Step 1: Building Go binary locally...${NC}"
@@ -77,6 +77,7 @@ echo "This is faster than building in Docker"
 
 # Build with optimizations for Linux
 echo "Building binary for Linux..."
+GOOS=linux GOARCH=amd64 go mod tidy && go mod vendor
 GOOS=linux GOARCH=amd64 go build -o api-server ./cmd/api/main.go
 
 echo -e "${GREEN}Binary built successfully at ./api-server${NC}"
@@ -100,8 +101,8 @@ echo "Logging in to AWS ECR..."
 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
 # Check if repository exists, if not create it
-aws ecr describe-repositories --repository-names ${ECR_REPOSITORY} --region ${AWS_REGION} || \
-    aws ecr create-repository --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION}
+# aws ecr describe-repositories --repository-names ${ECR_REPOSITORY} --region ${AWS_REGION} || \
+#     aws ecr create-repository --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION}
 
 echo "Pushing image to ECR..."
 docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
@@ -109,81 +110,44 @@ docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
 echo -e "${GREEN}Image successfully pushed to ${ECR_REPOSITORY_URI}:${IMAGE_TAG}${NC}"
 
 # STEP 4: Set up Kubernetes namespace
-echo -e "\n${YELLOW}Step 4: Setting up Kubernetes namespace...${NC}"
+# echo -e "\n${YELLOW}Step 4: Setting up Kubernetes namespace...${NC}"
 
 # Check if namespace exists, create if it doesn't
-kubectl get namespace ${NAMESPACE} &> /dev/null || \
-    (echo "Creating namespace ${NAMESPACE}..." && \
-    kubectl create namespace ${NAMESPACE})
+# kubectl get namespace ${NAMESPACE} &> /dev/null || \
+#     (echo "Creating namespace ${NAMESPACE}..." && \
+#     kubectl create namespace ${NAMESPACE})
 
-echo "Setting kubectl context to namespace: ${NAMESPACE}"
-kubectl config set-context --current --namespace=${NAMESPACE}
+# echo "Setting kubectl context to namespace: ${NAMESPACE}"
+# kubectl config set-context --current --namespace=${NAMESPACE}
 
-# STEP 5: Set up Kubernetes secrets
-echo -e "\n${YELLOW}Step 5: Setting up Kubernetes secrets...${NC}"
 
-# Database credentials
-read -p "DB Host (default: postgres-service): " DB_HOST
-DB_HOST=${DB_HOST:-postgres-service}
-read -p "DB Port (default: 5432): " DB_PORT
-DB_PORT=${DB_PORT:-5432}
-read -p "DB Username (default: hack25_user): " DB_USERNAME
-DB_USERNAME=${DB_USERNAME:-hack25_user}
-read -p "DB Password (default: code_analyser_password): " DB_PASSWORD
-DB_PASSWORD=${DB_PASSWORD:-code_analyser_password}
-read -p "DB Name (default: code_analyser): " DB_NAME
-DB_NAME=${DB_NAME:-code_analyser}
-
-# Create or update DB credentials secret
-kubectl create secret generic code-analyser-db-credentials \
-    --from-literal=host=${DB_HOST} \
-    --from-literal=port=${DB_PORT} \
-    --from-literal=username=${DB_USERNAME} \
-    --from-literal=password=${DB_PASSWORD} \
-    --from-literal=dbname=${DB_NAME} \
-    --dry-run=client -o yaml | kubectl apply -f -
-
-# API secrets
-read -p "JWT Secret (default: your-secret-key-change-in-production): " JWT_SECRET
-JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
-read -p "OpenAI API Key: " OPENAI_API_KEY
-read -p "Gemini API Key: " GEMINI_API_KEY
-read -p "Sonnet API Key: " SONNET_API_KEY
-
-# Create or update API secrets
-kubectl create secret generic code-analyser-api-secrets \
-    --from-literal=jwt-secret=${JWT_SECRET} \
-    --from-literal=openai-api-key=${OPENAI_API_KEY} \
-    --from-literal=gemini-api-key=${GEMINI_API_KEY} \
-    --from-literal=sonnet-api-key=${SONNET_API_KEY} \
-    --dry-run=client -o yaml | kubectl apply -f -
-
-# STEP 6: Deploy PostgreSQL (optional)
-echo -e "\n${YELLOW}Step 6: Deploying PostgreSQL (optional)...${NC}"
-echo "Do you want to deploy PostgreSQL to Kubernetes?"
-echo "Note: If you already have a PostgreSQL instance, you can skip this step"
-read -p "(y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deploying PostgreSQL..."
-    kubectl apply -f k8s/postgres-deployment.yaml 
+# # STEP 5: Deploy PostgreSQL (optional)
+# echo -e "\n${YELLOW}Step 5: Deploying PostgreSQL (optional)...${NC}"
+# echo "Do you want to deploy PostgreSQL to Kubernetes?"
+# echo "Note: If you already have a PostgreSQL instance, you can skip this step"
+# read -p "(y/n) " -n 1 -r
+# echo
+# if [[ $REPLY =~ ^[Yy]$ ]]; then
+#     echo "Deploying PostgreSQL..."
+#     kubectl apply -f k8s/postgres-deployment.yaml 
     
-    # Wait for PostgreSQL to be ready
-    echo "Waiting for PostgreSQL to be ready..."
-    kubectl rollout status deployment/postgres 
-fi
+#     # Wait for PostgreSQL to be ready
+#     echo "Waiting for PostgreSQL to be ready..."
+#     kubectl rollout status deployment/postgres 
+# fi
 
-# STEP 7: Deploy API server
-echo -e "\n${YELLOW}Step 7: Deploying API server...${NC}"
+# STEP 4: Deploy API server
+echo -e "\n${YELLOW}Step 4: Deploying API server...${NC}"
 echo "Deploying API server..."
 kubectl apply -f k8s/api-deployment.yaml 
+kubectl rollout restart deployment/code-analyser-be
 kubectl apply -f k8s/api-service.yaml 
 
 # Wait for deployments to be ready
 echo "Waiting for API server to be ready..."
 kubectl rollout status deployment/code-analyser-be 
 
-# STEP 8: Print summary
+# STEP 5: Print summary
 echo -e "\n${GREEN}Deployment completed successfully!${NC}"
 echo -e "\n${YELLOW}API Server Status:${NC}"
 kubectl get pods -l app=code-analyser-be 

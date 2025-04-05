@@ -181,9 +181,8 @@ func (a *Analyzer) extractCodeBlocks(file *ast.File, filePath string, analysis *
 				// Analyze statements for a detailed breakdown
 				if funcDecl.Body != nil {
 					stmtAnalysis := a.AnalyzeStatements(funcDecl.Body.List, filePath)
-					// We could store this analysis if needed
-					// For now, we'll just have it available from the AnalyzeStatements function
-					_ = stmtAnalysis
+					// Store the statement analysis in the symbol for later persistence
+					analysis.Functions[i].StatementAnalysis = stmtAnalysis
 				}
 
 				return false

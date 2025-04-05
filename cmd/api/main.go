@@ -47,6 +47,7 @@ func main() {
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db.Conn)
+	codeAnalyzerRepo := repository.NewCodeAnalyzerRepository(db.Conn)
 
 	// Initialize JWT service
 	jwtService := auth.NewJWTService(
@@ -74,11 +75,13 @@ func main() {
 	userService := service.NewUserService(userRepo, jwtService)
 	llmService := service.NewLLMService(llmClientFactory, cfg.LLM.DefaultModelName)
 	codeAnalysisService := service.NewCodeAnalysisService(llmService)
+	codeAnalyzerService := service.NewCodeAnalyzerService(codeAnalyzerRepo, "/tmp")
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService)
 	llmHandler := handlers.NewLLMHandler(llmService)
 	codeAnalysisHandler := handlers.NewCodeAnalysisHandler(codeAnalysisService)
+	codeAnalyzerHandler := handlers.NewCodeAnalyzerHandler(codeAnalyzerService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtService)
@@ -136,6 +139,9 @@ func main() {
 			code.POST("/analyze", codeAnalysisHandler.AnalyzeRepository)
 		}
 	}
+
+	// Register code analyzer routes
+	codeAnalyzerHandler.RegisterRoutes(router)
 
 	// Create HTTP server
 	server := &http.Server{

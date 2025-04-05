@@ -1,123 +1,98 @@
 # Go Code Analyzer
 
-A comprehensive tool for analyzing Go source code to identify symbols, track call hierarchies, and find references.
+A command-line tool for analyzing Go source code files and extracting information about symbols, call hierarchies, and references.
 
 ## Features
 
-- **Complete Symbol Identification**: Analyzes Go files to identify and categorize all symbols
-  - Packages
-  - Imports
-  - Constants
-  - Variables
-  - Types (including structs and interfaces)
-  - Functions and methods
-  - Fields and parameters
-
-- **Deep Code Analysis**:
-  - Statement-level analysis with AST parsing
-  - Call hierarchy tracking (which functions call which)
-  - Reference tracking (where symbols are used)
-  - Exported/unexported status of symbols
-
-- **Flexible Output Formats**:
-  - Human-readable text output with customizable detail levels
-  - JSON output for machine processing and integration with other tools
-
-## Installation
-
-```bash
-# From the project root
-cd cmd/goanalyzer
-go build
-```
+- Analyze individual Go files or entire directories
+- Extract symbols (packages, imports, constants, variables, types, functions, methods, etc.)
+- Identify call hierarchies between functions
+- Detect references to symbols across files
+- Output in JSON or text format
 
 ## Usage
 
 ```bash
 # Analyze a single file
-./goanalyzer -file=/path/to/file.go
+go run cmd/goanalyzer/main.go -path=/path/to/file.go
 
-# Analyze an entire directory
-./goanalyzer -dir=/path/to/directory
+# Analyze a directory (non-recursive)
+go run cmd/goanalyzer/main.go -path=/path/to/directory
 
-# Show function code blocks
-./goanalyzer -file=/path/to/file.go -code
+# Analyze a directory recursively
+go run cmd/goanalyzer/main.go -path=/path/to/directory -recursive=true
 
-# Show call hierarchy
-./goanalyzer -file=/path/to/file.go -calls
+# Output in text format
+go run cmd/goanalyzer/main.go -path=/path/to/file.go -format=text
 
-# Show symbol references
-./goanalyzer -file=/path/to/file.go -refs
-
-# Show statement analysis
-./goanalyzer -file=/path/to/file.go -statements
-
-# Focus on a specific function
-./goanalyzer -file=/path/to/file.go -function=FunctionName -statements
-
-# Output as JSON
-./goanalyzer -file=/path/to/file.go -json
+# Save output to a file
+go run cmd/goanalyzer/main.go -path=/path/to/file.go -output=analysis.json
 ```
 
-## Examples
+## Command-line Options
 
-### Symbol Listing
+- `-path`: Path to a Go file or directory (required)
+- `-recursive`: Recursively analyze directories (default: false)
+- `-format`: Output format - "json" or "text" (default: "json")
+- `-output`: Output file path (default: stdout)
 
-Running the analyzer on a Go file will list all symbols found:
+## Output Format
 
+### JSON Format
+
+The JSON output includes:
+- File path
+- List of symbols with their properties:
+  - Name
+  - Kind (package, import, const, var, type, func, struct, interface, etc.)
+  - Line number
+  - Exported status
+  - Type information
+  - Fields (for structs)
+  - Methods (for types)
+  - Parameters and results (for functions)
+  - Function calls (for functions)
+
+### Text Format
+
+The text output is organized by symbol kind and includes:
+- File path
+- Symbols grouped by kind (PACKAGE, IMPORT, CONST, VAR, TYPE, FUNC, etc.)
+- Call hierarchy section showing which functions call other functions
+- Exported symbols are marked with an asterisk (*)
+
+## Example
+
+Analyzing a simple Go file:
+
+```go
+package main
+
+import "fmt"
+
+const Version = "1.0.0"
+
+func main() {
+    fmt.Println("Hello, world!")
+    greet("User")
+}
+
+func greet(name string) {
+    fmt.Printf("Hello, %s!\n", name)
+}
 ```
-=== File: /path/to/file.go ===
-Package: main
 
-Imports:
-  fmt: fmt
-  os: os
+Will produce output showing:
+- Package: main
+- Import: fmt
+- Constant: Version
+- Functions: main, greet
+- Call hierarchy: main calls fmt.Println and greet, greet calls fmt.Printf
 
-Constants:
-  MaxRetries: int = 3 (exported: true)
+## Integration
 
-Variables:
-  defaultTimeout: time.Duration = 30 * time.Second (exported: false)
-
-Functions:
-  Function: main (exported: true)
-  Method: Process on *Processor (exported: true)
-```
-
-### Call Hierarchy
-
-Using the `-calls` flag shows which functions call other functions:
-
-```
-Functions:
-  Function: main (exported: true)
-    Calls:
-      -> fmt.Println (line 15)
-      -> NewProcessor (line 17)
-      -> processor.Process (line 18)
-```
-
-### Symbol References
-
-Using the `-refs` flag shows where symbols are used:
-
-```
-References:
-  main.Processor:
-    1 declaration(s), 3 usage(s)
-    - Used at line 17
-    - Used at line 25
-    - Used at line 42
-```
-
-## Architecture
-
-The analyzer is built using Go's standard library packages:
-- `go/ast`: For Abstract Syntax Tree parsing
-- `go/parser`: For parsing Go source code
-- `go/token`: For token operations
-
-The code is structured into three main packages:
-1. **models**: Data structures for representing code elements
-2. **analyzer**: Core analysis engine with AST parsing
-3. **cmd/goanalyzer**: Command-line interface
+This tool can be integrated into CI/CD pipelines to:
+- Generate documentation
+- Analyze code complexity
+- Track dependencies between components
+- Validate architectural constraints

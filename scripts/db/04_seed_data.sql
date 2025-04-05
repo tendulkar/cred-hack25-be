@@ -2,7 +2,7 @@
 \c code_analyser
 
 -- Seed admin user (password is 'admin123' hashed with bcrypt)
-INSERT INTO users (id, email, password, first_name, last_name, active, role, created_at, updated_at)
+INSERT INTO users.users (id, email, password, first_name, last_name, active, role, created_at, updated_at)
 VALUES (
     uuid_generate_v4(),
     'admin@example.com',
@@ -16,7 +16,7 @@ VALUES (
 ) ON CONFLICT (email) DO NOTHING;
 
 -- Seed regular user (password is 'user123' hashed with bcrypt)
-INSERT INTO users (id, email, password, first_name, last_name, active, role, created_at, updated_at)
+INSERT INTO users.users (id, email, password, first_name, last_name, active, role, created_at, updated_at)
 VALUES (
     uuid_generate_v4(),
     'user@example.com',
@@ -30,7 +30,7 @@ VALUES (
 ) ON CONFLICT (email) DO NOTHING;
 
 -- Seed a sample repository
-INSERT INTO repositories (id, repo_url, owner, name, created_at, updated_at, analyzed_at)
+INSERT INTO code_analysis.repositories (id, repo_url, owner, name, created_at, updated_at, analyzed_at)
 VALUES (
     uuid_generate_v4(),
     'https://github.com/golang/go',
