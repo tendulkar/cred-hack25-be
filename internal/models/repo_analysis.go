@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"cred.com/hack25/backend/pkg/goanalyzer/models"
@@ -101,13 +102,22 @@ type GetIndexResponse struct {
 }
 
 // FileAnalysisToRepositoryModels converts a FileAnalysis to repository models
-func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64, fileID int64) ([]RepositoryFunction, []RepositorySymbol, []FunctionStatement) {
+func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64, fileID int64) ([]RepositoryFunction, []RepositorySymbol, []FunctionStatement, []FunctionCall, []FunctionReference, []FileDependency) {
 	var functions []RepositoryFunction
 	var symbols []RepositorySymbol
 	var statements []FunctionStatement
+	var calls []FunctionCall
+	var references []FunctionReference
+	var dependencies []FileDependency
 
 	// Convert functions
 	for _, fn := range analysis.Functions {
+		// Convert parameters to JSON
+		paramsJSON, _ := json.Marshal(fn.Parameters)
+		
+		// Convert results to JSON
+		resultsJSON, _ := json.Marshal(fn.Results)
+		
 		repoFn := RepositoryFunction{
 			RepositoryID: repoID,
 			FileID:       fileID,
@@ -115,6 +125,8 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 			Kind:         fn.Kind,
 			Receiver:     fn.Receiver,
 			Exported:     fn.Exported,
+			Parameters:   string(paramsJSON),
+			Results:      string(resultsJSON),
 			CodeBlock:    fn.CodeBlock,
 			Line:         fn.Position.Line,
 			CreatedAt:    time.Now(),
@@ -219,7 +231,97 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 		symbols = append(symbols, symbol)
 	}
 
-	return functions, symbols, statements
+	// Convert function calls
+	for _, call := range analysis.Calls {
+		// Find caller function index
+		callerIndex := -1
+		for i, fn := range functions {
+			// Match function by name and line number
+			if call.Caller == fn.Name {
+				callerIndex = i
+				break
+			}
+		}
+		
+		// Skip if we couldn't find the caller function
+		if callerIndex == -1 {
+			continue
+		}
+		
+		// Convert parameters to JSON
+		paramsJSON, _ := json.Marshal(call.Parameters)
+		
+		fnCall := FunctionCall{
+			CallerID:      0, // Will be set after function IDs are assigned
+			CalleeName:    call.Callee,
+			CalleePackage: call.CalleePath,
+			Line:          call.Position.Line,
+			Parameters:    string(paramsJSON),
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+		
+		// Store the function index so we can update with the real caller ID later
+		fnCall.CallerID = int64(callerIndex) // Temporarily store index, will be replaced
+		calls = append(calls, fnCall)
+	}
+	
+	// Convert function references
+	for _, ref := range analysis.References {
+		// Find referenced function index
+		functionIndex := -1
+		for i, fn := range functions {
+			// Match function by name
+			if ref.Symbol == fn.Name {
+				functionIndex = i
+				break
+			}
+		}
+		
+		// Skip if we couldn't find the referenced function
+		if functionIndex == -1 {
+			continue
+		}
+		
+		fnRef := FunctionReference{
+			FunctionID:     0, // Will be set after function IDs are assigned
+			ReferenceType:  ref.RefType,
+			FileID:         fileID,
+			Line:           ref.Position.Line,
+			ColumnPosition: ref.Position.Column,
+			Context:        "", // Could extract a snippet from the source file if needed
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+		
+		// Store the function index so we can update with the real function ID later
+		fnRef.FunctionID = int64(functionIndex) // Temporarily store index, will be replaced
+		references = append(references, fnRef)
+	}
+
+	// Convert imports to dependencies
+	for _, imp := range analysis.Imports {
+		// Determine if it's a standard library import
+		isStdlib := false
+		if !strings.Contains(imp.Value, ".") {
+			// Standard library packages typically don't have dots in their names
+			isStdlib = true
+		}
+
+		dep := FileDependency{
+			RepositoryID: repoID,
+			FileID:       fileID,
+			ImportPath:   imp.Value,
+			Alias:        imp.Name,
+			IsStdlib:     isStdlib,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
+		}
+
+		dependencies = append(dependencies, dep)
+	}
+
+	return functions, symbols, statements, calls, references, dependencies
 }
 
 // convertStatements recursively converts StatementInfo to FunctionStatement models

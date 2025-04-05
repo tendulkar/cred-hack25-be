@@ -89,6 +89,11 @@ type CodeAnalyzerRepository interface {
 	GetRepositoryFunctions(repoID int64, fileID int64) ([]models.RepositoryFunction, error)
 	GetRepositorySymbols(repoID int64, fileID int64) ([]models.RepositorySymbol, error)
 	BatchCreateFunctionStatements(statements []models.FunctionStatement) error
+	AddFunctionCall(call *models.FunctionCall) error
+	AddFunctionReference(ref *models.FunctionReference) error
+	AddFileDependency(dep *models.FileDependency) error
+	BatchAddFileDependencies(deps []models.FileDependency) error
+	GetFileDependencies(repoID int64, fileID int64) ([]models.FileDependency, error)
 }
 
 // CodeAnalyzerService handles code analysis operations
@@ -367,8 +372,9 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 		s.logger.Debug("File entry created", "file", relPath, "fileID", file.ID)
 
 		// Convert functions and symbols to repository models
-		functions, symbols, _ := models.FileAnalysisToRepositoryModels(analysis, repoID, file.ID)
-		s.logger.Debug("Extracted entities from file", "file", relPath, "functions", len(functions), "symbols", len(symbols))
+		functions, symbols, _, funcCalls, funcRefs, fileDeps := models.FileAnalysisToRepositoryModels(analysis, repoID, file.ID)
+		s.logger.Info("Extracted entities from file", "file", relPath, "functions", len(functions), "symbols", len(symbols), 
+			"calls", len(funcCalls), "references", len(funcRefs), "dependencies", len(fileDeps))
 
 		// Store functions and symbols
 		if len(functions) > 0 {
@@ -378,6 +384,50 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 				return fmt.Errorf("error creating function entries: %w", err)
 			}
 			s.logger.Debug("Function entries created", "file", relPath, "count", len(functions))
+
+			// Now process function calls and references using the real function IDs
+			if len(funcCalls) > 0 {
+				// Update caller IDs with real database IDs
+				for i := range funcCalls {
+					// The CallerID currently contains the index into the functions slice
+					fnIndex := funcCalls[i].CallerID
+					if fnIndex >= 0 && int(fnIndex) < len(functions) {
+						funcCalls[i].CallerID = functions[fnIndex].ID
+					}
+				}
+
+				// Store function calls in the database
+				for _, call := range funcCalls {
+					err = s.repo.AddFunctionCall(&call)
+					if err != nil {
+						s.logger.Warn("Error creating function call", "caller_id", call.CallerID, "callee", call.CalleeName, "error", err)
+						// Continue with other calls, don't fail the entire analysis
+					}
+				}
+				s.logger.Debug("Function calls created", "file", relPath, "count", len(funcCalls))
+			}
+
+			// Process function references
+			if len(funcRefs) > 0 {
+				// Update function IDs with real database IDs
+				for i := range funcRefs {
+					// The FunctionID currently contains the index into the functions slice
+					fnIndex := funcRefs[i].FunctionID
+					if fnIndex >= 0 && int(fnIndex) < len(functions) {
+						funcRefs[i].FunctionID = functions[fnIndex].ID
+					}
+				}
+
+				// Store function references in the database
+				for _, ref := range funcRefs {
+					err = s.repo.AddFunctionReference(&ref)
+					if err != nil {
+						s.logger.Warn("Error creating function reference", "function_id", ref.FunctionID, "type", ref.ReferenceType, "error", err)
+						// Continue with other references, don't fail the entire analysis
+					}
+				}
+				s.logger.Debug("Function references created", "file", relPath, "count", len(funcRefs))
+			}
 		}
 
 		if len(symbols) > 0 {
@@ -387,6 +437,18 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 				return fmt.Errorf("error creating symbol entries: %w", err)
 			}
 			s.logger.Debug("Symbol entries created", "file", relPath, "count", len(symbols))
+		}
+		
+		// Store file dependencies
+		if len(fileDeps) > 0 {
+			err = s.repo.BatchAddFileDependencies(fileDeps)
+			if err != nil {
+				s.logger.Error("Error creating file dependency entries", "file", relPath, "error", err)
+				// Don't fail the entire analysis for dependency errors, just log it
+				s.logger.Warn("Continuing analysis despite dependency errors")
+			} else {
+				s.logger.Debug("File dependency entries created", "file", relPath, "count", len(fileDeps))
+			}
 		}
 	}
 

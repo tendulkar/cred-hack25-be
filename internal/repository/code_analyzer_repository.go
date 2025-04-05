@@ -271,7 +271,7 @@ func (r *CodeAnalyzerRepository) BatchCreateFunctions(functions []models.Reposit
 	}
 	defer fnStmt.Close()
 
-	for _, fn := range functions {
+	for i, fn := range functions {
 		// Convert params, results to JSON
 		paramsJSON, err := json.Marshal(fn.Parameters)
 		if err != nil {
@@ -306,6 +306,7 @@ func (r *CodeAnalyzerRepository) BatchCreateFunctions(functions []models.Reposit
 			})).Error("Failed to insert function")
 			return err
 		}
+		functions[i].ID = functionID
 
 		// Process function calls if available
 		if fn.Calls != "" {

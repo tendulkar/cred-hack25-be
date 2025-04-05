@@ -132,6 +132,19 @@ CREATE TABLE IF NOT EXISTS code_analyzer.symbol_references (
     UNIQUE(symbol_id, file_id, line, column_position)
 );
 
+-- Table to store file-level dependencies
+CREATE TABLE IF NOT EXISTS code_analyzer.file_dependencies (
+    id SERIAL PRIMARY KEY,
+    repository_id INTEGER NOT NULL REFERENCES code_analyzer.repositories(id) ON DELETE CASCADE,
+    file_id INTEGER NOT NULL REFERENCES code_analyzer.repository_files(id) ON DELETE CASCADE, 
+    import_path VARCHAR(500) NOT NULL, -- The import path (e.g., "github.com/pkg/errors")
+    alias VARCHAR(100), -- The alias used in the import (e.g., "errors")
+    is_stdlib BOOLEAN NOT NULL DEFAULT false, -- Whether this is a standard library import
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(file_id, import_path)
+);
+
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_repository_files_repository_id ON code_analyzer.repository_files(repository_id);
 CREATE INDEX IF NOT EXISTS idx_repository_functions_repository_id ON code_analyzer.repository_functions(repository_id);
@@ -146,3 +159,6 @@ CREATE INDEX IF NOT EXISTS idx_function_references_function_id ON code_analyzer.
 CREATE INDEX IF NOT EXISTS idx_function_statements_function_id ON code_analyzer.function_statements(function_id);
 CREATE INDEX IF NOT EXISTS idx_function_statements_parent_id ON code_analyzer.function_statements(parent_statement_id);
 CREATE INDEX IF NOT EXISTS idx_symbol_references_symbol_id ON code_analyzer.symbol_references(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_file_dependencies_file_id ON code_analyzer.file_dependencies(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_dependencies_repository_id ON code_analyzer.file_dependencies(repository_id);
+CREATE INDEX IF NOT EXISTS idx_file_dependencies_import_path ON code_analyzer.file_dependencies(import_path);
