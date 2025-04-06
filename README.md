@@ -1,4 +1,6 @@
 # Scalable Go Backend
+## FE link
+https://github.com/tendulkar/cred-hack25-fe
 
 A modular, production-ready backend service built with Go, featuring central logging, user authentication, and PostgreSQL integration.
 
