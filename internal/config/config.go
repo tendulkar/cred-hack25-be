@@ -66,6 +66,27 @@ func Load() (*Config, error) {
 			RefreshTokenTTL:  time.Duration(getEnvAsInt("JWT_REFRESH_TOKEN_TTL", 24*7)) * time.Hour,
 			SigningAlgorithm: getEnv("JWT_SIGNING_ALGORITHM", "HS256"),
 		},
+		LLM: LLMConfig{
+			DefaultModelName: getEnv("LLM_DEFAULT_MODEL", "openai:gpt-3.5-turbo"),
+			OpenAI: OpenAIConfig{
+				APIKey:       getEnv("OPENAI_API_KEY", ""),
+				DefaultModel: getEnv("OPENAI_DEFAULT_MODEL", "gpt-3.5-turbo"),
+			},
+			Gemini: GeminiConfig{
+				APIKey:       getEnv("GEMINI_API_KEY", ""),
+				DefaultModel: getEnv("GEMINI_DEFAULT_MODEL", "gemini-pro"),
+			},
+			Sonnet: SonnetConfig{
+				APIKey:       getEnv("SONNET_API_KEY", ""),
+				BaseURL:      getEnv("SONNET_BASE_URL", "https://api.sonnet.ai/v1"),
+				DefaultModel: getEnv("SONNET_DEFAULT_MODEL", "sonnet-3.5-pro"),
+			},
+			LiteLLM: LiteLLMConfig{
+				APIKey:       getEnv("LITELLM_API_KEY", "sk-_ANTPTNsfl9XBVA5Q4jvyg"),
+				BaseURL:      getEnv("LITELLM_BASE_URL", "https://api.rabbithole.cred.club"),
+				DefaultModel: getEnv("LITELLM_DEFAULT_MODEL", "gpt-4o"),
+			},
+		},
 		LogLevel: getLogLevel(getEnv("LOG_LEVEL", "info")),
 		LogFile:  getEnv("LOG_FILE", ""),
 	}

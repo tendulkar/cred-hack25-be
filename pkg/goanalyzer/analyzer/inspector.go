@@ -9,6 +9,14 @@ import (
 	"cred.com/hack25/backend/pkg/goanalyzer/models"
 )
 
+// extractCommentText extracts the text from a comment group
+func (a *Analyzer) extractCommentText(cg *ast.CommentGroup) string {
+	if cg == nil {
+		return ""
+	}
+	return cg.Text()
+}
+
 // analyzeFile analyzes a single file
 func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnalysis {
 	analysis := &models.FileAnalysis{
@@ -16,9 +24,11 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 		Package:  file.Name.Name,
 	}
 
+	a.log().Info("Analyzing file", "file", filePath, "imports", file.Imports)
 	// Extract imports
 	for _, imp := range file.Imports {
 		path := strings.Trim(imp.Path.Value, "\"")
+		a.log().Info("Import", "path", path, "name", imp.Name)
 		var name string
 		if imp.Name != nil {
 			name = imp.Name.Name
@@ -32,10 +42,11 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 		analysis.Imports = append(analysis.Imports, models.Symbol{
 			Name:     name,
 			Kind:     "import",
-			Type:     path,
+			Value:    path,
 			Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 		})
 	}
+	a.log().Info("Extracted imports", "file", filePath, "imports", analysis.Imports)
 
 	// Walk through the AST and extract symbols
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -45,6 +56,13 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 				// Extract constants
 				for _, spec := range node.Specs {
 					if valueSpec, ok := spec.(*ast.ValueSpec); ok {
+						// Extract comments for this value spec
+						comments := a.extractCommentText(valueSpec.Doc)
+						if comments == "" {
+							// If no doc comment on the spec itself, try to get comment from the parent GenDecl
+							comments = a.extractCommentText(node.Doc)
+						}
+						
 						for i, name := range valueSpec.Names {
 							pos := a.fset.Position(name.Pos())
 
@@ -66,6 +84,7 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 								Type:     typeStr,
 								Value:    value,
 								Exported: name.IsExported(),
+								Comments: comments,
 								Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 							}
 
@@ -81,6 +100,13 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 				// Extract variables
 				for _, spec := range node.Specs {
 					if valueSpec, ok := spec.(*ast.ValueSpec); ok {
+						// Extract comments for this value spec
+						comments := a.extractCommentText(valueSpec.Doc)
+						if comments == "" {
+							// If no doc comment on the spec itself, try to get comment from the parent GenDecl
+							comments = a.extractCommentText(node.Doc)
+						}
+						
 						for i, name := range valueSpec.Names {
 							pos := a.fset.Position(name.Pos())
 
@@ -102,6 +128,7 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 								Type:     typeStr,
 								Value:    value,
 								Exported: name.IsExported(),
+								Comments: comments,
 								Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 							}
 
@@ -118,11 +145,19 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 				for _, spec := range node.Specs {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
 						pos := a.fset.Position(typeSpec.Pos())
+						
+						// Extract comments for this type spec
+						comments := a.extractCommentText(typeSpec.Doc)
+						if comments == "" {
+							// If no doc comment on the spec itself, try to get comment from the parent GenDecl
+							comments = a.extractCommentText(node.Doc)
+						}
 
 						typeSymbol := models.Symbol{
 							Name:     typeSpec.Name.Name,
 							Kind:     "type",
 							Exported: typeSpec.Name.IsExported(),
+							Comments: comments,
 							Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 						}
 
@@ -133,12 +168,15 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 								Name:     typeSpec.Name.Name,
 								Kind:     "struct",
 								Exported: typeSpec.Name.IsExported(),
+								Comments: comments,
 								Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 							}
 
 							// Extract fields
 							if typeNode.Fields != nil {
 								for _, field := range typeNode.Fields.List {
+									// Extract field comments
+									fieldComments := a.extractCommentText(field.Doc)
 									for _, name := range field.Names {
 										fieldPos := a.fset.Position(name.Pos())
 										structSymbol.Fields = append(structSymbol.Fields, models.Symbol{
@@ -146,6 +184,7 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 											Kind:     "field",
 											Type:     a.formatNode(field.Type),
 											Exported: name.IsExported(),
+											Comments: fieldComments,
 											Position: models.Position{File: filePath, Line: fieldPos.Line, Column: fieldPos.Column},
 										})
 									}
@@ -169,6 +208,7 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 											Kind:     "embedded field",
 											Type:     fieldType,
 											Exported: true, // Embedding is usually for exported fields
+											Comments: fieldComments,
 											Position: models.Position{File: filePath, Line: fieldPos.Line, Column: fieldPos.Column},
 										})
 									}
@@ -186,12 +226,16 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 								Name:     typeSpec.Name.Name,
 								Kind:     "interface",
 								Exported: typeSpec.Name.IsExported(),
+								Comments: comments,
 								Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 							}
 
 							// Extract methods
 							if typeNode.Methods != nil {
 								for _, method := range typeNode.Methods.List {
+									// Extract method comments
+									methodComments := a.extractCommentText(method.Doc)
+									
 									for _, name := range method.Names {
 										pos := a.fset.Position(name.Pos())
 
@@ -199,6 +243,7 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 											Name:     name.Name,
 											Kind:     "method",
 											Exported: name.IsExported(),
+											Comments: methodComments,
 											Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 										}
 
@@ -242,11 +287,15 @@ func (a *Analyzer) analyzeFile(file *ast.File, filePath string) *models.FileAnal
 
 		case *ast.FuncDecl:
 			pos := a.fset.Position(node.Pos())
+			
+			// Extract comments for this function
+			comments := a.extractCommentText(node.Doc)
 
 			funcSymbol := models.Symbol{
 				Name:     node.Name.Name,
 				Kind:     "function",
 				Exported: node.Name.IsExported(),
+				Comments: comments,
 				Position: models.Position{File: filePath, Line: pos.Line, Column: pos.Column},
 			}
 

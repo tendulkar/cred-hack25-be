@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"cred.com/hack25/backend/internal/insights"
 	"cred.com/hack25/backend/pkg/goanalyzer/models"
 )
 
@@ -93,12 +94,37 @@ type GetIndexRequest struct {
 	FilePath string `json:"file_path,omitempty"`
 }
 
+// IndexedFunction represents a function with additional metadata like insights
+type IndexedFunction struct {
+	Function        *RepositoryFunction       `json:"function"`
+	FunctionInsight *insights.FunctionInsight `json:"function_insight,omitempty"`
+	Insights        interface{}               `json:"insights,omitempty"`
+}
+
+// IndexedSymbol represents a symbol with additional metadata
+type IndexedSymbol struct {
+	Symbol   *RepositorySymbol `json:"symbol"`
+	Insights interface{}       `json:"insights,omitempty"`
+}
+
+// IndexedFile represents a file with its functions and symbols
+type IndexedFile struct {
+	File      *RepositoryFile            `json:"file"`
+	Functions map[int64]*IndexedFunction `json:"functions,omitempty"` // Map of function ID to IndexedFunction
+	Symbols   map[int64]*IndexedSymbol   `json:"symbols,omitempty"`   // Map of symbol ID to IndexedSymbol
+	Insights  interface{}                `json:"insights,omitempty"`
+}
+
 // GetIndexResponse is the response for a get index request
 type GetIndexResponse struct {
-	Repository *Repository          `json:"repository"`
-	Files      []RepositoryFile     `json:"files,omitempty"`
-	Functions  []RepositoryFunction `json:"functions,omitempty"`
-	Symbols    []RepositorySymbol   `json:"symbols,omitempty"`
+	Repository      *Repository             `json:"repository"`
+	IndexedFilesMap map[string]*IndexedFile `json:"indexed_files_map,omitempty"` // Map of file path to IndexedFile
+
+	// Legacy fields - kept for backward compatibility
+	Files     []RepositoryFile       `json:"files,omitempty"`
+	Functions []RepositoryFunction   `json:"functions,omitempty"`
+	Symbols   []RepositorySymbol     `json:"symbols,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"` // For additional data like insights
 }
 
 // FileAnalysisToRepositoryModels converts a FileAnalysis to repository models
@@ -114,10 +140,10 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 	for _, fn := range analysis.Functions {
 		// Convert parameters to JSON
 		paramsJSON, _ := json.Marshal(fn.Parameters)
-		
+
 		// Convert results to JSON
 		resultsJSON, _ := json.Marshal(fn.Results)
-		
+
 		repoFn := RepositoryFunction{
 			RepositoryID: repoID,
 			FileID:       fileID,
@@ -242,15 +268,15 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 				break
 			}
 		}
-		
+
 		// Skip if we couldn't find the caller function
 		if callerIndex == -1 {
 			continue
 		}
-		
+
 		// Convert parameters to JSON
 		paramsJSON, _ := json.Marshal(call.Parameters)
-		
+
 		fnCall := FunctionCall{
 			CallerID:      0, // Will be set after function IDs are assigned
 			CalleeName:    call.Callee,
@@ -260,12 +286,15 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		}
-		
+
 		// Store the function index so we can update with the real caller ID later
 		fnCall.CallerID = int64(callerIndex) // Temporarily store index, will be replaced
 		calls = append(calls, fnCall)
 	}
-	
+
+	// Log the references we're processing
+	// s.logger.Info("Processing function references", "references", analysis.References)
+
 	// Convert function references
 	for _, ref := range analysis.References {
 		// Find referenced function index
@@ -277,12 +306,12 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 				break
 			}
 		}
-		
+
 		// Skip if we couldn't find the referenced function
 		if functionIndex == -1 {
 			continue
 		}
-		
+
 		fnRef := FunctionReference{
 			FunctionID:     0, // Will be set after function IDs are assigned
 			ReferenceType:  ref.RefType,
@@ -293,7 +322,7 @@ func FileAnalysisToRepositoryModels(analysis *models.FileAnalysis, repoID int64,
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
-		
+
 		// Store the function index so we can update with the real function ID later
 		fnRef.FunctionID = int64(functionIndex) // Temporarily store index, will be replaced
 		references = append(references, fnRef)

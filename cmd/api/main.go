@@ -11,6 +11,7 @@ import (
 	"cred.com/hack25/backend/internal/config"
 	"cred.com/hack25/backend/internal/handlers"
 	"cred.com/hack25/backend/internal/middleware"
+	"cred.com/hack25/backend/internal/repointel"
 	"cred.com/hack25/backend/internal/repository"
 	"cred.com/hack25/backend/internal/service"
 	"cred.com/hack25/backend/pkg/auth"
@@ -75,7 +76,15 @@ func main() {
 	userService := service.NewUserService(userRepo, jwtService)
 	llmService := service.NewLLMService(llmClientFactory, cfg.LLM.DefaultModelName)
 	codeAnalysisService := service.NewCodeAnalysisService(llmService)
-	codeAnalyzerService := service.NewCodeAnalyzerService(codeAnalyzerRepo, "/tmp")
+	// Get LiteLLM configuration from config
+	liteLLMURL := cfg.LLM.LiteLLM.BaseURL
+	liteLLMAPIKey := cfg.LLM.LiteLLM.APIKey
+	liteLLMDefaultModel := cfg.LLM.LiteLLM.DefaultModel
+	repoIntlRepo := repointel.NewRepository(db.Conn)
+	repoIntlService := repointel.NewService(codeAnalyzerRepo, cfg.LLM.LiteLLM.BaseURL, cfg.LLM.LiteLLM.APIKey, cfg.LLM.LiteLLM.DefaultModel)
+	insightsService := repointel.NewInsightsManager(repoIntlService, repoIntlRepo)
+
+	codeAnalyzerService := service.NewCodeAnalyzerService(codeAnalyzerRepo, "/tmp", liteLLMURL, liteLLMAPIKey, liteLLMDefaultModel, insightsService)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService)

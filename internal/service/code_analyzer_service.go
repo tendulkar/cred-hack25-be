@@ -1,6 +1,7 @@
 package service
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"cred.com/hack25/backend/internal/models"
+	"cred.com/hack25/backend/internal/repointel"
+	"cred.com/hack25/backend/internal/repository"
 	"cred.com/hack25/backend/pkg/goanalyzer"
 	analyzerModels "cred.com/hack25/backend/pkg/goanalyzer/models"
 	"cred.com/hack25/backend/pkg/logger"
@@ -98,14 +101,18 @@ type CodeAnalyzerRepository interface {
 
 // CodeAnalyzerService handles code analysis operations
 type CodeAnalyzerService struct {
-	repo         CodeAnalyzerRepository
-	analyzer     *goanalyzer.Analyzer
-	workspaceDir string
-	logger       *ServiceLogger
+	repo                CodeAnalyzerRepository
+	analyzer            *goanalyzer.Analyzer
+	workspaceDir        string
+	logger              *ServiceLogger
+	insightsManager     *repointel.InsightsManager
+	liteLLMBaseURL      string
+	liteLLMAPIKey       string
+	liteLLMDefaultModel string
 }
 
 // NewCodeAnalyzerService creates a new code analyzer service
-func NewCodeAnalyzerService(repo CodeAnalyzerRepository, workspaceDir string) *CodeAnalyzerService {
+func NewCodeAnalyzerService(repo CodeAnalyzerRepository, workspaceDir string, liteLLMURL, liteLLMAPIKey, liteLLMDefaultModel string, insightsManager *repointel.InsightsManager) *CodeAnalyzerService {
 	if workspaceDir == "" {
 		// Default to a temp directory
 		workspaceDir = os.TempDir()
@@ -113,12 +120,37 @@ func NewCodeAnalyzerService(repo CodeAnalyzerRepository, workspaceDir string) *C
 
 	log := NewServiceLogger("code-analyzer-service")
 
-	return &CodeAnalyzerService{
-		repo:         repo,
-		analyzer:     goanalyzer.New(),
-		workspaceDir: workspaceDir,
-		logger:       log,
+	// Use environment variables as fallback if not provided
+	if liteLLMURL == "" {
+		liteLLMURL = os.Getenv("LITELLM_BASE_URL")
 	}
+	if liteLLMAPIKey == "" {
+		liteLLMAPIKey = os.Getenv("LITELLM_API_KEY")
+	}
+	if liteLLMDefaultModel == "" {
+		liteLLMDefaultModel = os.Getenv("LITELLM_DEFAULT_MODEL")
+	}
+	s := &CodeAnalyzerService{
+		repo:                repo,
+		analyzer:            goanalyzer.New(),
+		workspaceDir:        workspaceDir,
+		logger:              log,
+		liteLLMBaseURL:      liteLLMURL,
+		liteLLMAPIKey:       liteLLMAPIKey,
+		liteLLMDefaultModel: liteLLMDefaultModel,
+		insightsManager:     insightsManager,
+	}
+
+	// Initialize insights components if LiteLLM credentials are provided
+	if liteLLMURL != "" && liteLLMAPIKey != "" && liteLLMDefaultModel != "" {
+		// We'll initialize the insights manager after creating the service
+		// since we need to pass the raw DB connection to the repointel repository
+		log.Info("LiteLLM credentials found, repository intelligence will be available")
+	} else {
+		log.Warn("LiteLLM credentials not provided, repository intelligence features will be unavailable")
+	}
+
+	return s
 }
 
 // IndexRepository starts the process of analyzing a repository
@@ -276,8 +308,8 @@ func (s *CodeAnalyzerService) processRepository(repoID int64, kind, url, owner, 
 func (s *CodeAnalyzerService) cloneRepository(kind, url, localPath string) error {
 	var gitURL string
 	switch kind {
-	case "github":
-		gitURL = url + ".git"
+	// case "github":
+	// 	gitURL = url + ".git"
 	default:
 		gitURL = url
 	}
@@ -373,7 +405,7 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 
 		// Convert functions and symbols to repository models
 		functions, symbols, _, funcCalls, funcRefs, fileDeps := models.FileAnalysisToRepositoryModels(analysis, repoID, file.ID)
-		s.logger.Info("Extracted entities from file", "file", relPath, "functions", len(functions), "symbols", len(symbols), 
+		s.logger.Info("Extracted entities from file", "file", relPath, "functions", len(functions), "symbols", len(symbols),
 			"calls", len(funcCalls), "references", len(funcRefs), "dependencies", len(fileDeps))
 
 		// Store functions and symbols
@@ -428,6 +460,18 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 				}
 				s.logger.Debug("Function references created", "file", relPath, "count", len(funcRefs))
 			}
+
+			// Store insights
+			for _, function := range functions {
+				s.logger.Info("Storing insights for repository", "file", relPath)
+				_, err = s.insightsManager.GenerateAndSaveFunctionInsight(repoID, function.ID, "gpt-4o")
+				if err != nil {
+					s.logger.Error("Error storing insights", "file", relPath, "error", err)
+					return fmt.Errorf("error storing insights: %w", err)
+				}
+				s.logger.Debug("Insights stored", "file", relPath)
+			}
+
 		}
 
 		if len(symbols) > 0 {
@@ -438,9 +482,11 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 			}
 			s.logger.Debug("Symbol entries created", "file", relPath, "count", len(symbols))
 		}
-		
+
 		// Store file dependencies
 		if len(fileDeps) > 0 {
+			s.logger.Info("Adding file dependencies", "file", relPath, "count", len(fileDeps),
+				"fileDependencies", fileDeps)
 			err = s.repo.BatchAddFileDependencies(fileDeps)
 			if err != nil {
 				s.logger.Error("Error creating file dependency entries", "file", relPath, "error", err)
@@ -450,10 +496,33 @@ func (s *CodeAnalyzerService) analyzeRepository(repoID int64, localPath string) 
 				s.logger.Debug("File dependency entries created", "file", relPath, "count", len(fileDeps))
 			}
 		}
+
 	}
 
 	s.logger.Info("Repository analysis completed", "files_processed", len(goFiles))
 	return nil
+}
+
+// InitializeInsightsManager initializes the insights manager if LiteLLM credentials are available
+func (s *CodeAnalyzerService) InitializeInsightsManager(dbConn *sql.DB) {
+	if s.liteLLMBaseURL != "" && s.liteLLMAPIKey != "" && s.liteLLMDefaultModel != "" {
+		s.logger.Info("Initializing repository intelligence components")
+
+		// Create repointel repository
+		insightRepo := repointel.NewRepository(dbConn)
+
+		// Create repointel service
+		insightService := repointel.NewService(
+			s.repo.(*repository.CodeAnalyzerRepository), // Cast to concrete type
+			s.liteLLMBaseURL,
+			s.liteLLMAPIKey,
+			s.liteLLMDefaultModel,
+		)
+
+		// Create insights manager
+		s.insightsManager = repointel.NewInsightsManager(insightService, insightRepo)
+		s.logger.Info("Repository intelligence components initialized successfully")
+	}
 }
 
 // GetRepositoryIndex retrieves the analysis for a repository or specific file
@@ -474,7 +543,9 @@ func (s *CodeAnalyzerService) GetRepositoryIndex(url, filePath string) (*models.
 	s.logger.Debug("Repository found", "id", repo.ID, "status", repo.IndexStatus)
 
 	response := &models.GetIndexResponse{
-		Repository: repo,
+		Repository:      repo,
+		IndexedFilesMap: make(map[string]*models.IndexedFile),
+		Metadata:        make(map[string]interface{}),
 	}
 
 	// If a specific file was requested
@@ -492,6 +563,13 @@ func (s *CodeAnalyzerService) GetRepositoryIndex(url, filePath string) (*models.
 		}
 		s.logger.Debug("File found", "fileID", file.ID)
 
+		// Create the indexed file structure
+		indexedFile := &models.IndexedFile{
+			File:      file,
+			Functions: make(map[int64]*models.IndexedFunction),
+			Symbols:   make(map[int64]*models.IndexedSymbol),
+		}
+
 		// Get functions and symbols for this file
 		s.logger.Debug("Getting functions for file", "fileID", file.ID)
 		functions, err := s.repo.GetRepositoryFunctions(repo.ID, file.ID)
@@ -501,6 +579,28 @@ func (s *CodeAnalyzerService) GetRepositoryIndex(url, filePath string) (*models.
 		}
 		s.logger.Debug("Functions retrieved", "count", len(functions))
 
+		// Populate the indexed functions with insights
+		for i := range functions {
+			functionPtr := &functions[i]
+			indexedFunc := &models.IndexedFunction{
+				Function: functionPtr,
+			}
+
+			// Add function insights if insights manager is available
+			if s.insightsManager != nil {
+				insightList, err := s.insightsManager.GetFunctionInsights(repo.ID, functionPtr.ID)
+				if err != nil {
+					s.logger.Warn("Error retrieving function insight", "function_id", functionPtr.ID, "error", err)
+				} else if len(insightList) > 0 {
+					// Use the latest insight
+					indexedFunc.Insights = insightList[0]
+				}
+			}
+
+			// Add to the indexed file
+			indexedFile.Functions[functionPtr.ID] = indexedFunc
+		}
+
 		s.logger.Debug("Getting symbols for file", "fileID", file.ID)
 		symbols, err := s.repo.GetRepositorySymbols(repo.ID, file.ID)
 		if err != nil {
@@ -509,6 +609,21 @@ func (s *CodeAnalyzerService) GetRepositoryIndex(url, filePath string) (*models.
 		}
 		s.logger.Debug("Symbols retrieved", "count", len(symbols))
 
+		// Populate the indexed symbols
+		for i := range symbols {
+			sym := &symbols[i]
+			indexedSymbol := &models.IndexedSymbol{
+				Symbol: sym,
+			}
+
+			// Add to the indexed file
+			indexedFile.Symbols[sym.ID] = indexedSymbol
+		}
+
+		// Add the indexed file to the map
+		response.IndexedFilesMap[filePath] = indexedFile
+
+		// For backward compatibility
 		response.Files = []models.RepositoryFile{*file}
 		response.Functions = functions
 		response.Symbols = symbols
@@ -523,6 +638,65 @@ func (s *CodeAnalyzerService) GetRepositoryIndex(url, filePath string) (*models.
 			s.logger.Error("Error retrieving files", "error", err)
 			return nil, fmt.Errorf("error retrieving files: %w", err)
 		}
+
+		// Process each file
+		for i := range files {
+			filePtr := &files[i]
+
+			// Create indexed file structure
+			indexedFile := &models.IndexedFile{
+				File:      filePtr,
+				Functions: make(map[int64]*models.IndexedFunction),
+				Symbols:   make(map[int64]*models.IndexedSymbol),
+			}
+
+			// Get functions for this file
+			fileFunctions, err := s.repo.GetRepositoryFunctions(repo.ID, filePtr.ID)
+			if err != nil {
+				s.logger.Warn("Error retrieving functions for file", "fileID", filePtr.ID, "error", err)
+				// Continue with other files even if this one fails
+			} else {
+				// Process functions
+				for j := range fileFunctions {
+					functionPtr := &fileFunctions[j]
+					indexedFunc := &models.IndexedFunction{
+						Function: functionPtr,
+					}
+
+					// Add function insights if available
+					if s.insightsManager != nil {
+						insightList, err := s.insightsManager.GetFunctionInsights(repo.ID, functionPtr.ID)
+						if err == nil && len(insightList) > 0 {
+							indexedFunc.Insights = insightList[0]
+						}
+					}
+
+					// Add to indexed file
+					indexedFile.Functions[functionPtr.ID] = indexedFunc
+				}
+			}
+
+			// Get symbols for this file
+			fileSymbols, err := s.repo.GetRepositorySymbols(repo.ID, filePtr.ID)
+			if err != nil {
+				s.logger.Warn("Error retrieving symbols for file", "fileID", filePtr.ID, "error", err)
+				// Continue with other files even if this one fails
+			} else {
+				// Process symbols
+				for j := range fileSymbols {
+					symbolPtr := &fileSymbols[j]
+					indexedFile.Symbols[symbolPtr.ID] = &models.IndexedSymbol{Symbol: symbolPtr}
+				}
+			}
+
+			// File insights are not implemented yet
+			// This is where we would add file-level insights in the future
+
+			// Add to response map
+			response.IndexedFilesMap[filePtr.FilePath] = indexedFile
+		}
+
+		// For backward compatibility
 		response.Files = files
 		s.logger.Info("Repository index data retrieved successfully", "fileCount", len(files))
 	}

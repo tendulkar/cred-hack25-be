@@ -104,6 +104,13 @@ func DefaultModels() map[string]Model {
 			Temperature: 0.7,
 			TopP:        1.0,
 		},
+		"openai:gpt-4o": {
+			Name:        "gpt-4o",
+			Provider:    "openai",
+			MaxTokens:   8192,
+			Temperature: 0.7,
+			TopP:        1.0,
+		},
 		"google:gemini-pro": {
 			Name:        "gemini-pro",
 			Provider:    "google",

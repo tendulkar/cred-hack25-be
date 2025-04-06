@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"cred.com/hack25/backend/pkg/goanalyzer/models"
+	"cred.com/hack25/backend/pkg/logger"
+	"github.com/sirupsen/logrus"
 )
 
 // Analyzer is the main analyzer struct
@@ -32,6 +34,10 @@ func New() *Analyzer {
 		references:  make(map[string][]models.ReferenceInfo),
 		symbolTable: make(map[string]models.Symbol),
 	}
+}
+
+func (a *Analyzer) log() *logrus.Entry {
+	return logger.Log.WithField("component", "code-analyzer")
 }
 
 // AnalyzeFile analyzes a single Go file

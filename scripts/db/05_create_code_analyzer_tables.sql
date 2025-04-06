@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS code_analyzer.repository_functions (
     parameters JSONB, -- JSON array of parameters
     results JSONB, -- JSON array of results
     code_block TEXT, -- Full code
+    comments TEXT, -- Documentation comments
     line INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS code_analyzer.repository_symbols (
     exported BOOLEAN NOT NULL,
     fields JSONB, -- JSON array of fields (for structs)
     methods JSONB, -- JSON array of methods
+    comments TEXT, -- Documentation comments
     line INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -162,3 +164,90 @@ CREATE INDEX IF NOT EXISTS idx_symbol_references_symbol_id ON code_analyzer.symb
 CREATE INDEX IF NOT EXISTS idx_file_dependencies_file_id ON code_analyzer.file_dependencies(file_id);
 CREATE INDEX IF NOT EXISTS idx_file_dependencies_repository_id ON code_analyzer.file_dependencies(repository_id);
 CREATE INDEX IF NOT EXISTS idx_file_dependencies_import_path ON code_analyzer.file_dependencies(import_path);
+
+
+
+-- Create function_insights table
+CREATE TABLE IF NOT EXISTS code_analyzer.function_insights (
+    id SERIAL PRIMARY KEY,
+    repository_id BIGINT NOT NULL,
+    function_id BIGINT NOT NULL,
+    data JSONB NOT NULL, -- Store structured insight data
+    model VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    CONSTRAINT fk_function_repository FOREIGN KEY (repository_id) REFERENCES code_analyzer.repositories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_function FOREIGN KEY (function_id) REFERENCES code_analyzer.repository_functions(id) ON DELETE CASCADE
+);
+
+-- Create symbol_insights table
+CREATE TABLE IF NOT EXISTS code_analyzer.symbol_insights (
+    id SERIAL PRIMARY KEY,
+    repository_id BIGINT NOT NULL,
+    symbol_id BIGINT NOT NULL,
+    data JSONB NOT NULL, -- Store structured insight data
+    model VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    CONSTRAINT fk_symbol_repository FOREIGN KEY (repository_id) REFERENCES code_analyzer.repositories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_symbol FOREIGN KEY (symbol_id) REFERENCES code_analyzer.repository_symbols(id) ON DELETE CASCADE
+);
+
+-- Create struct_insights table (for specialized struct analysis)
+CREATE TABLE IF NOT EXISTS code_analyzer.struct_insights (
+    id SERIAL PRIMARY KEY,
+    repository_id BIGINT NOT NULL,
+    symbol_id BIGINT NOT NULL, -- Structs are symbols in Go
+    data JSONB NOT NULL, -- Store structured insight data
+    model VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    CONSTRAINT fk_struct_repository FOREIGN KEY (repository_id) REFERENCES code_analyzer.repositories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_struct_symbol FOREIGN KEY (symbol_id) REFERENCES code_analyzer.repository_symbols(id) ON DELETE CASCADE
+);
+
+-- Create file_insights table
+CREATE TABLE IF NOT EXISTS code_analyzer.file_insights (
+    id SERIAL PRIMARY KEY,
+    repository_id BIGINT NOT NULL,
+    file_id BIGINT NOT NULL,
+    data JSONB NOT NULL, -- Store structured insight data
+    model VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    CONSTRAINT fk_file_repository FOREIGN KEY (repository_id) REFERENCES code_analyzer.repositories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_file FOREIGN KEY (file_id) REFERENCES code_analyzer.repository_files(id) ON DELETE CASCADE
+);
+
+-- Create repository_insights table
+CREATE TABLE IF NOT EXISTS code_analyzer.repository_insights (
+    id SERIAL PRIMARY KEY,
+    repository_id BIGINT NOT NULL,
+    data JSONB NOT NULL, -- Store structured insight data
+    model VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    CONSTRAINT fk_repository FOREIGN KEY (repository_id) REFERENCES code_analyzer.repositories(id) ON DELETE CASCADE
+);
+
+-- Add indexes for better query performance
+CREATE INDEX idx_function_insights_repository_id ON code_analyzer.function_insights(repository_id);
+CREATE INDEX idx_function_insights_function_id ON code_analyzer.function_insights(function_id);
+
+CREATE INDEX idx_symbol_insights_repository_id ON code_analyzer.symbol_insights(repository_id);
+CREATE INDEX idx_symbol_insights_symbol_id ON code_analyzer.symbol_insights(symbol_id);
+
+CREATE INDEX idx_struct_insights_repository_id ON code_analyzer.struct_insights(repository_id);
+CREATE INDEX idx_struct_insights_symbol_id ON code_analyzer.struct_insights(symbol_id);
+
+CREATE INDEX idx_file_insights_repository_id ON code_analyzer.file_insights(repository_id);
+CREATE INDEX idx_file_insights_file_id ON code_analyzer.file_insights(file_id);
+
+CREATE INDEX idx_repository_insights_repository_id ON code_analyzer.repository_insights(repository_id);
+
+-- Add comments to the tables for better documentation
+-- COMMENT ON TABLE code_analyzer.function_insights IS 'Stores LLM-generated insights for functions';
+-- COMMENT ON TABLE code_analyzer.symbol_insights IS 'Stores LLM-generated insights for symbols';
+-- COMMENT ON TABLE code_analyzer.struct_insights IS 'Stores LLM-generated insights for struct types';
+-- COMMENT ON TABLE code_analyzer.file_insights IS 'Stores LLM-generated insights for files';
+-- COMMENT ON TABLE code_analyzer.repository_insights IS 'Stores LLM-generated insights for repositories';

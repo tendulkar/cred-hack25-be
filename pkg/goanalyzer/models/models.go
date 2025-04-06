@@ -10,6 +10,7 @@ type Symbol struct {
 	Value            string          `json:"value,omitempty"`
 	Exported         bool            `json:"exported"`
 	Position         Position        `json:"position"`
+	Comments         string          `json:"comments,omitempty"`   // Comments associated with the symbol
 	Parameters       []Symbol        `json:"parameters,omitempty"`
 	Results          []Symbol        `json:"results,omitempty"`
 	Fields           []Symbol        `json:"fields,omitempty"`

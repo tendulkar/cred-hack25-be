@@ -242,6 +242,40 @@ func (r *CodeAnalyzerRepository) GetRepositoryFileByPath(repoID int64, filePath 
 	return &file, nil
 }
 
+// GetRepositoryFileByID gets a specific file by ID
+func (r *CodeAnalyzerRepository) GetRepositoryFileByID(repoID int64, fileID int64) (*models.RepositoryFile, error) {
+	r.log().WithFields(fieldsToLogrus(logger.Fields{
+		"repo_id": repoID,
+		"file_id": fileID,
+	})).Debug("Getting repository file by ID")
+
+	var file models.RepositoryFile
+	query := `
+		SELECT id, repository_id, file_path, package, last_analyzed, created_at, updated_at
+		FROM code_analyzer.repository_files
+		WHERE repository_id = $1 AND id = $2
+	`
+
+	err := r.DB.Get(&file, query, repoID, fileID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			r.log().WithFields(fieldsToLogrus(logger.Fields{
+				"repo_id": repoID,
+				"file_id": fileID,
+			})).Debug("File not found")
+			return nil, nil // File not found
+		}
+		r.log().WithFields(fieldsToLogrus(logger.Fields{
+			"repo_id": repoID,
+			"file_id": fileID,
+			"error":   err,
+		})).Error("Error getting repository file by ID")
+		return nil, err
+	}
+
+	return &file, nil
+}
+
 // BatchCreateFunctions inserts functions and their related data
 func (r *CodeAnalyzerRepository) BatchCreateFunctions(functions []models.RepositoryFunction) error {
 	r.log().WithField("count", len(functions)).Info("Creating repository functions in batch")
